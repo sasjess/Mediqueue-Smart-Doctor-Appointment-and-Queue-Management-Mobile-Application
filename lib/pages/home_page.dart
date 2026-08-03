@@ -9,7 +9,16 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   int selectedCategoryIndex = 0;
-  int selectedNavIndex = 0;
+
+  // Search controller & state variable
+  final TextEditingController _searchController = TextEditingController();
+  String searchQuery = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   // ------------------------------------------------------------
   // CATEGORIES
@@ -92,13 +101,9 @@ class _HomePageState extends State<HomePage> {
             constraints: const BoxConstraints(
               maxWidth: 800,
             ),
-            //margin: const EdgeInsets.symmetric(horizontal: 12),
-
-            decoration: BoxDecoration(
+            decoration: const BoxDecoration(
               color: Colors.white,
-              //borderRadius: BorderRadius.circular(26),
             ),
-
             child: Column(
               children: [
                 // ==================================================
@@ -108,11 +113,8 @@ class _HomePageState extends State<HomePage> {
                 Expanded(
                   child: SingleChildScrollView(
                     physics: const BouncingScrollPhysics(),
-
                     child: Padding(
                       padding: const EdgeInsets.all(16.0),
-                      
-
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -163,55 +165,6 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
         ),
-      ),
-
-      // ========================================================
-      // BOTTOM NAVIGATION BAR
-      // ========================================================
-
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: selectedNavIndex,
-
-        selectedItemColor: Colors.deepPurple,
-
-        unselectedItemColor: Colors.grey,
-
-        onTap: (index) {
-          setState(() {
-            selectedNavIndex = index;
-          });
-        },
-
-        type: BottomNavigationBarType.fixed,
-
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home),
-            label: 'Home',
-          ),
-
-          BottomNavigationBarItem(
-            icon: Icon(Icons.medical_services),
-            label: 'Doctors',
-          ),
-
-          BottomNavigationBarItem(
-            icon: Icon(Icons.queue),
-            label: 'My Queue',
-          ),
-
-          BottomNavigationBarItem(
-            icon: Icon(Icons.confirmation_num),
-            label: 'Ticket',
-          ),
-
-          BottomNavigationBarItem(
-            icon: Icon(Icons.person),
-            label: 'Profile',
-          ),
-        ],
-
-        backgroundColor: Colors.white,
       ),
     );
   }
@@ -386,8 +339,8 @@ class _HomePageState extends State<HomePage> {
           Expanded(
             child: Padding(
               padding: const EdgeInsets.only(
-                left: 59,
-                //right: 12,
+                left: 16,
+                right: 12,
               ),
 
               child: Column(
@@ -419,7 +372,7 @@ class _HomePageState extends State<HomePage> {
 
                   SizedBox(
                     height: 35,
-                    width: 148,
+                    width: 120,
 
                     child: ElevatedButton(
                       onPressed: () {},
@@ -439,7 +392,7 @@ class _HomePageState extends State<HomePage> {
                       child: const Text(
                         'Get Started',
                         style: TextStyle(
-                          fontSize: 13,
+                          fontSize: 12,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -455,44 +408,44 @@ class _HomePageState extends State<HomePage> {
   }
 
   // ============================================================
-  // SEARCH BOX
+  // SEARCH BOX (UPDATED TO TEXTFIELD)
   // ============================================================
 
   Widget _buildSearchBox() {
     return Container(
       height: 52,
       width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
 
       decoration: BoxDecoration(
         color: const Color(0xFFF8F8FD),
-
         borderRadius: BorderRadius.circular(15),
-
         border: Border.all(
           color: const Color(0xFFF1F1F8),
         ),
       ),
 
-      child: const Row(
-        children: [
-          SizedBox(width: 15),
-
-          Icon(
+      child: TextField(
+        controller: _searchController,
+        onChanged: (value) {
+          setState(() {
+            searchQuery = value;
+          });
+        },
+        decoration: const InputDecoration(
+          hintText: 'How can we help you?',
+          hintStyle: TextStyle(
+            fontSize: 14,
+            color: Color.fromARGB(255, 143, 143, 147),
+          ),
+          prefixIcon: Icon(
             Icons.search,
             size: 21,
             color: Color.fromARGB(255, 112, 54, 171),
           ),
-
-          SizedBox(width: 10),
-
-          Text(
-            'How can we help you?',
-            style: TextStyle(
-              fontSize: 14,
-              color: Color.fromARGB(255, 143, 143, 147),
-            ),
-          ),
-        ],
+          border: InputBorder.none,
+          contentPadding: EdgeInsets.symmetric(vertical: 14),
+        ),
       ),
     );
   }
@@ -546,8 +499,11 @@ class _HomePageState extends State<HomePage> {
 
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
+        clipBehavior: Clip.none,
 
-        physics: const BouncingScrollPhysics(),
+        physics: const AlwaysScrollableScrollPhysics(
+          parent: BouncingScrollPhysics(),
+        ),
 
         itemCount: categories.length,
 
@@ -637,12 +593,15 @@ class _HomePageState extends State<HomePage> {
 
   Widget _buildDoctorList() {
     return SizedBox(
-      height: 168,
+      height: 175,
 
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
+        clipBehavior: Clip.none,
 
-        physics: const BouncingScrollPhysics(),
+        physics: const AlwaysScrollableScrollPhysics(
+          parent: BouncingScrollPhysics(),
+        ),
 
         itemCount: doctors.length,
 
