@@ -1,38 +1,20 @@
 import 'package:flutter/material.dart';
-import 'database/database_helper.dart';
+import 'package:mediqueue/pages/home_page.dart';
 
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
 
-  // Open the database
-  final db = await DatabaseHelper.instance.database;
-
-  print('================================');
-  print('MediQueue Database Created!');
-  print('Database: ${db.path}');
-  print('================================');
-
-  runApp(const MediQueueApp());
+void main()  {
+  runApp(const MyApp());
 }
 
-class MediQueueApp extends StatelessWidget {
-  const MediQueueApp({super.key});
+class MyApp extends StatelessWidget {
+  const MyApp({Key? key}): super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
+    return const MaterialApp(
       debugShowCheckedModeBanner: false,
-      home: Scaffold(
-        appBar: AppBar(
-          title: const Text('MediQueue'),
-        ),
-        body: const Center(
-          child: Text(
-            'Database Connected Successfully!',
-            style: TextStyle(fontSize: 20),
-          ),
-        ),
-      ),
+      home: HomePage(),
+      //theme:ThemeData(primarySwatch: Colors.deepPurple),
     );
   }
 }
