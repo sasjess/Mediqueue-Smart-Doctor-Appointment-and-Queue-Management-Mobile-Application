@@ -92,7 +92,7 @@ class _HomePageState extends State<HomePage> {
             constraints: const BoxConstraints(
               maxWidth: 800,
             ),
-            margin: const EdgeInsets.symmetric(horizontal: 12),
+            //margin: const EdgeInsets.symmetric(horizontal: 12),
 
             decoration: BoxDecoration(
               color: Colors.white,
@@ -110,12 +110,8 @@ class _HomePageState extends State<HomePage> {
                     physics: const BouncingScrollPhysics(),
 
                     child: Padding(
-                      padding: const EdgeInsets.fromLTRB(
-                        16,
-                        0,
-                        0,
-                        0,
-                      ),
+                      padding: const EdgeInsets.all(16.0),
+                      
 
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -390,8 +386,8 @@ class _HomePageState extends State<HomePage> {
           Expanded(
             child: Padding(
               padding: const EdgeInsets.only(
-                left: 2,
-                right: 12,
+                left: 59,
+                //right: 12,
               ),
 
               child: Column(
@@ -422,8 +418,8 @@ class _HomePageState extends State<HomePage> {
                   const SizedBox(height: 9),
 
                   SizedBox(
-                    height: 30,
-                    width: 120,
+                    height: 35,
+                    width: 148,
 
                     child: ElevatedButton(
                       onPressed: () {},
@@ -443,7 +439,7 @@ class _HomePageState extends State<HomePage> {
                       child: const Text(
                         'Get Started',
                         style: TextStyle(
-                          fontSize: 10,
+                          fontSize: 13,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
