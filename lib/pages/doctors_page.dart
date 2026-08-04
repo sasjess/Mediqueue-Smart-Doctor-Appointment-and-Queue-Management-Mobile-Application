@@ -44,7 +44,14 @@ class _DoctorsPageState extends State<DoctorsPage> {
     // Filter doctors list based on search query
     final filteredDoctors = _doctors.where((doctor) {
       final name = (doctor['name'] ?? '').toString().toLowerCase();
-      final spec = (doctor['specialization'] ?? '').toString().toLowerCase();
+      
+      // Check direct 'specialization' or nested 'specialties(name)'
+      final String spec = (doctor['specialization'] ??
+              doctor['specialties']?['name'] ??
+              '')
+          .toString()
+          .toLowerCase();
+
       final query = _searchQuery.toLowerCase();
       return name.contains(query) || spec.contains(query);
     }).toList();
@@ -137,7 +144,12 @@ class _DoctorsPageState extends State<DoctorsPage> {
     required List availabilities,
   }) {
     final String name = doctor['name'] ?? 'Unknown Doctor';
-    final String specialization = doctor['specialization'] ?? 'General';
+    
+    // Safely check both potential column names for specialty & profile image
+    final String specialization = doctor['specialization'] ??
+        doctor['specialties']?['name'] ??
+        'General';
+    final String? imageUrl = doctor['image_url'] ?? doctor['avatar_url'];
 
     // Get primary availability slot if available
     final Map<String, dynamic>? todaySlot = availabilities.isNotEmpty
@@ -145,8 +157,14 @@ class _DoctorsPageState extends State<DoctorsPage> {
         : null;
 
     final String status = todaySlot?['duty_status'] ?? 'UNAVAILABLE';
-    final String startTime = todaySlot?['start_time'] ?? '';
-    final String endTime = todaySlot?['end_time'] ?? '';
+    final String startTime = (todaySlot?['start_time'] ?? '').toString();
+    final String endTime = (todaySlot?['end_time'] ?? '').toString();
+
+    // Helper to safely format time standard format (e.g. "09:00")
+    String formatTime(String time) {
+      if (time.length >= 5) return time.substring(0, 5);
+      return time;
+    }
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -161,10 +179,44 @@ class _DoctorsPageState extends State<DoctorsPage> {
         children: [
           Row(
             children: [
-              const CircleAvatar(
-                radius: 28,
-                backgroundColor: Color(0xFFEDEAFF),
-                child: Icon(Icons.person, size: 32, color: Color(0xFF8171E5)),
+              // ==========================================
+              // PROFILE PICTURE WITH FALLBACK & ERROR HANDLING
+              // ==========================================
+              Container(
+                width: 56,
+                height: 56,
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Color(0xFFEDEAFF),
+                ),
+                child: ClipOval(
+                  child: (imageUrl != null && imageUrl.startsWith('http'))
+                      ? Image.network(
+                          imageUrl,
+                          width: 56,
+                          height: 56,
+                          fit: BoxFit.cover,
+                          loadingBuilder: (context, child, loadingProgress) {
+                            if (loadingProgress == null) return child;
+                            return const Center(
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Color(0xFF8171E5),
+                              ),
+                            );
+                          },
+                          errorBuilder: (_, __, ___) => const Icon(
+                            Icons.person,
+                            size: 32,
+                            color: Color(0xFF8171E5),
+                          ),
+                        )
+                      : const Icon(
+                          Icons.person,
+                          size: 32,
+                          color: Color(0xFF8171E5),
+                        ),
+                ),
               ),
               const SizedBox(width: 14),
               Expanded(
@@ -190,7 +242,7 @@ class _DoctorsPageState extends State<DoctorsPage> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
-                  color: status == 'AVAILABLE'
+                  color: (status == 'AVAILABLE' || status.toLowerCase() == 'on duty')
                       ? Colors.green.withOpacity(0.1)
                       : Colors.orange.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(8),
@@ -200,7 +252,9 @@ class _DoctorsPageState extends State<DoctorsPage> {
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.bold,
-                    color: status == 'AVAILABLE' ? Colors.green : Colors.orange,
+                    color: (status == 'AVAILABLE' || status.toLowerCase() == 'on duty')
+                        ? Colors.green
+                        : Colors.orange,
                   ),
                 ),
               ),
@@ -221,8 +275,8 @@ class _DoctorsPageState extends State<DoctorsPage> {
                   const Icon(Icons.access_time, size: 16, color: Colors.grey),
                   const SizedBox(width: 6),
                   Text(
-                    todaySlot != null
-                        ? '${startTime.substring(0, 5)} - ${endTime.substring(0, 5)}'
+                    todaySlot != null && startTime.isNotEmpty
+                        ? '${formatTime(startTime)} - ${formatTime(endTime)}'
                         : 'No slots today',
                     style: const TextStyle(fontSize: 12, color: Colors.grey),
                   ),
@@ -232,7 +286,7 @@ class _DoctorsPageState extends State<DoctorsPage> {
                 onPressed: todaySlot == null
                     ? null
                     : () {
-                        // Navigate to book tab or trigger appointment sheet
+                        // Navigate to booking page
                       },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF8171E5),
