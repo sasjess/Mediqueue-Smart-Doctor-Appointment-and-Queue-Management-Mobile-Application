@@ -230,108 +230,38 @@ class _HomePageState extends State<HomePage> {
   // ============================================================
   // MEDICAL BANNER
   // ============================================================
-
-  Widget _buildMedicalBanner() {
+Widget _buildMedicalBanner() {
     return Container(
       height: 150,
       width: double.infinity,
-
       decoration: BoxDecoration(
         color: const Color(0xFFFFDDF0),
         borderRadius: BorderRadius.circular(18),
       ),
-
       child: Row(
         children: [
           // ------------------------------------------------------
-          // LEFT ILLUSTRATION
+          // LEFT IMAGE
           // ------------------------------------------------------
-
           SizedBox(
-            width: 125,
+            width: 200,
             height: double.infinity,
-
-            child: Stack(
-              alignment: Alignment.center,
-
-              children: [
-                // Purple background circle
-                Positioned(
-                  bottom: 10,
-                  left: 25,
-
-                  child: Container(
-                    width: 70,
-                    height: 70,
-
-                    decoration: const BoxDecoration(
-                      color: Color(0xFF5A4BB7),
-                      shape: BoxShape.circle,
-                    ),
+            child: Padding(
+              padding: const EdgeInsets.all(12.0),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Image.asset(
+                  'lib/images/receptionist11.png', // 👈 Change this to your image path
+                  fit: BoxFit.contain, // Use BoxFit.cover or BoxFit.contain depending on your image aspect ratio
+                  errorBuilder: (context, error, stackTrace) => const Icon(
+                    Icons.image_not_supported_outlined,
+                    color: Color(0xFF8171E5),
+                    size: 50,
                   ),
                 ),
-
-                // Head
-                Positioned(
-                  top: 18,
-                  left: 55,
-
-                  child: Container(
-                    width: 27,
-                    height: 27,
-
-                    decoration: const BoxDecoration(
-                      color: Color(0xFFFFC8B7),
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                ),
-
-                // Body
-                Positioned(
-                  bottom: 8,
-                  left: 48,
-
-                  child: Container(
-                    width: 48,
-                    height: 72,
-
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF6355C2),
-                      borderRadius: BorderRadius.circular(22),
-                    ),
-                  ),
-                ),
-
-                // Medical card
-                Positioned(
-                  right: 5,
-                  bottom: 22,
-
-                  child: Transform.rotate(
-                    angle: -0.08,
-
-                    child: Container(
-                      width: 43,
-                      height: 31,
-
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFFB7D7),
-                        borderRadius: BorderRadius.circular(5),
-                      ),
-
-                      child: const Icon(
-                        Icons.medical_information_outlined,
-                        size: 18,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
-
           // ------------------------------------------------------
           // BANNER TEXT
           // ------------------------------------------------------
@@ -339,8 +269,8 @@ class _HomePageState extends State<HomePage> {
           Expanded(
             child: Padding(
               padding: const EdgeInsets.only(
-                left: 16,
-                right: 12,
+                left: 9,
+                //right: 12,
               ),
 
               child: Column(
@@ -372,13 +302,14 @@ class _HomePageState extends State<HomePage> {
 
                   SizedBox(
                     height: 35,
-                    width: 120,
+                    width: 139,
 
                     child: ElevatedButton(
                       onPressed: () {},
 
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF8171E5),
+                        //backgroundColor: const Color.fromARGB(255, 118, 103, 212),
                         foregroundColor: Colors.white,
                         elevation: 0,
 
@@ -413,12 +344,13 @@ class _HomePageState extends State<HomePage> {
 
   Widget _buildSearchBox() {
     return Container(
-      height: 52,
+      height: 60,
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 12),
 
       decoration: BoxDecoration(
-        color: const Color(0xFFF8F8FD),
+        //color: const Color(0xFFF8F8FD),
+        color: const Color.fromARGB(255, 234, 234, 248),
         borderRadius: BorderRadius.circular(15),
         border: Border.all(
           color: const Color(0xFFF1F1F8),
@@ -525,7 +457,7 @@ class _HomePageState extends State<HomePage> {
                 milliseconds: 200,
               ),
 
-              width: 110,
+              width: 120,
 
               margin: EdgeInsets.only(
                 right: index == categories.length - 1
@@ -535,14 +467,16 @@ class _HomePageState extends State<HomePage> {
 
               decoration: BoxDecoration(
                 color: selected
-                    ? const Color(0xFFEDEAFF)
-                    : const Color(0xFFF9F9FD),
+                    //? const Color(0xFFEDEAFF)
+                    //: const Color(0xFFF9F9FD),
+                    ?const Color.fromARGB(255, 203, 198, 227)
+                    : const Color.fromARGB(255, 234, 234, 248),
 
                 borderRadius: BorderRadius.circular(13),
 
                 border: Border.all(
                   color: selected
-                      ? const Color(0xFFDCD5FF)
+                      ? const Color.fromARGB(255, 224, 218, 252)
                       : const Color.fromRGBO(243, 243, 248, 1),
                 ),
               ),
@@ -566,11 +500,11 @@ class _HomePageState extends State<HomePage> {
                       overflow: TextOverflow.ellipsis,
 
                       style: TextStyle(
-                        fontSize: 11,
-
+                        fontSize: 14,
+                        
                         fontWeight: selected
-                            ? FontWeight.w700
-                            : FontWeight.w500,
+                            ? FontWeight.w900
+                            : FontWeight.w700,
 
                         color: const Color(0xFF696978),
                       ),
@@ -636,7 +570,8 @@ class _HomePageState extends State<HomePage> {
       ),
 
       decoration: BoxDecoration(
-        color: const Color(0xFFF9F9FD),
+        //color: const Color(0xFFF9F9FD),
+        color:const Color.fromARGB(255, 234, 234, 248),
 
         borderRadius: BorderRadius.circular(15),
 

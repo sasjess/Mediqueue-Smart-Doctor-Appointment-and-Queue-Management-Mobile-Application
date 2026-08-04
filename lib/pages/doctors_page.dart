@@ -212,11 +212,12 @@ class _DoctorsPageState extends State<DoctorsPage> {
 
   Widget _buildSearchBox() {
     return Container(
-      height: 50,
+      height: 60,
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 12),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8F8FD),
+        //color: const Color(0xFFF8F8FD),
+        color: const Color.fromARGB(255, 234, 234, 248),
         borderRadius: BorderRadius.circular(15),
         border: Border.all(
           color: const Color(0xFFF1F1F8),
@@ -342,7 +343,7 @@ class _DoctorsPageState extends State<DoctorsPage> {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFFF9F9FD),
+        color: const Color.fromARGB(255, 234, 234, 248),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: const Color(0xFFF2F2F8),
@@ -357,7 +358,7 @@ class _DoctorsPageState extends State<DoctorsPage> {
             children: [
               Container(
                 width: 65,
-                height: 65,
+                height: 75,
                 decoration: const BoxDecoration(
                   shape: BoxShape.circle,
                   color: Color(0xFFE5E0FA),
