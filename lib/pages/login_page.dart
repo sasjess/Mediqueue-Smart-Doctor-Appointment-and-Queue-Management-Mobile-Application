@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:mediqueue/main.dart'; // Navigates to NavigationWrapper
-import 'package:mediqueue/pages/signup_page.dart'; // Navigates to SignUpPage
+import 'package:mediqueue/pages/signup_page.dart';
+import 'package:mediqueue/pages/auth_wrapper.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -57,9 +57,8 @@ class _LoginPageState extends State<LoginPage> {
       );
 
       if (mounted) {
-        Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(builder: (context) => const NavigationWrapper()),
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const AuthWrapper()),
           (route) => false,
         );
       }
