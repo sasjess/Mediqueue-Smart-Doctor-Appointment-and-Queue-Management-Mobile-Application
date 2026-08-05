@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:mediqueue/pages/SpecialistPage.dart';
@@ -10,21 +11,15 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  int selectedCategoryIndex = 0;
-
-  // Search controller & state variable
   final TextEditingController _searchController = TextEditingController();
   String searchQuery = '';
+  int selectedCategoryIndex = 0; // Fixed: Declared missing category state variable
 
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
-  }
+  String userName = 'User';
+  String? avatarUrl;
+  StreamSubscription? _profileSubscription;
 
-  // ------------------------------------------------------------
-  // CATEGORIES
-  // ------------------------------------------------------------
+  // Categories List
   final List<Map<String, dynamic>> categories = [
     {
       'name': 'Dentist',
@@ -52,17 +47,113 @@ class _HomePageState extends State<HomePage> {
     },
   ];
 
-  // ------------------------------------------------------------
+  // Future to store Doctor list so typing in search doesn't keep hitting Supabase
+  late Future<List<Map<String, dynamic>>> _doctorsFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _doctorsFuture = _fetchDoctors();
+    _fetchUserProfile();
+    _setupProfileSubscription();
+  }
+
+  void _setupProfileSubscription() {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) return;
+
+    try {
+      _profileSubscription = Supabase.instance.client
+          .from('profiles')
+          .stream(primaryKey: ['id'])
+          .eq('id', user.id)
+          .listen((data) {
+        if (data.isNotEmpty && mounted) {
+          final profile = data.first;
+          setState(() {
+            if (profile['full_name'] != null && profile['full_name'].toString().isNotEmpty) {
+              userName = profile['full_name'].toString();
+            }
+            if (profile['avatar_url'] != null && profile['avatar_url'].toString().isNotEmpty) {
+              avatarUrl = profile['avatar_url'].toString();
+            }
+          });
+        }
+      });
+    } catch (e) {
+      debugPrint('Error listening to profile changes: $e');
+    }
+  }
+
+  Future<void> _fetchUserProfile() async {
+    final user = Supabase.instance.client.auth.currentUser;
+
+    if (user != null) {
+      // Check Auth metadata first
+      final nameFromMeta = user.userMetadata?['full_name'] ?? user.userMetadata?['name'];
+      final avatarFromMeta = user.userMetadata?['avatar_url'];
+
+      if (mounted) {
+        setState(() {
+          if (nameFromMeta != null) userName = nameFromMeta.toString();
+          if (avatarFromMeta != null && avatarFromMeta.toString().isNotEmpty) {
+            avatarUrl = avatarFromMeta.toString();
+          }
+        });
+      }
+
+      // Check database profiles table as well
+      try {
+        final profile = await Supabase.instance.client
+            .from('profiles')
+            .select('full_name, avatar_url')
+            .eq('id', user.id)
+            .maybeSingle();
+
+        if (profile != null && mounted) {
+          setState(() {
+            if (profile['full_name'] != null && profile['full_name'].toString().isNotEmpty) {
+              userName = profile['full_name'].toString();
+            }
+            if (profile['avatar_url'] != null && profile['avatar_url'].toString().isNotEmpty) {
+              avatarUrl = profile['avatar_url'].toString();
+            }
+          });
+        }
+      } catch (e) {
+        debugPrint('Error fetching user profile: $e');
+      }
+    }
+  }
+
+  // Fetch doctors and their related specialties & availability
+  Future<List<Map<String, dynamic>>> _fetchDoctors() async {
+    final response = await Supabase.instance.client.from('doctors').select('''
+          id, 
+          name, 
+          years_experience, 
+          rating, 
+          image_url, 
+          specialties(name),
+          doctor_availability(duty_status, delay_minutes)
+        ''');
+    return List<Map<String, dynamic>>.from(response);
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _profileSubscription?.cancel();
+    super.dispose();
+  }
+
+  // ============================================================
   // BUILD
-  // ------------------------------------------------------------
+  // ============================================================
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFE9E9F7),
-
-      // ========================================================
-      // MAIN BODY
-      // ========================================================
       body: SafeArea(
         child: Center(
           child: Container(
@@ -74,9 +165,6 @@ class _HomePageState extends State<HomePage> {
             ),
             child: Column(
               children: [
-                // ==================================================
-                // SCROLLABLE CONTENT
-                // ==================================================
                 Expanded(
                   child: SingleChildScrollView(
                     physics: const BouncingScrollPhysics(),
@@ -95,7 +183,7 @@ class _HomePageState extends State<HomePage> {
 
                           const SizedBox(height: 35),
 
-                          // SEARCH
+                          // SEARCH BOX
                           _buildSearchBox(),
 
                           const SizedBox(height: 35),
@@ -121,7 +209,7 @@ class _HomePageState extends State<HomePage> {
 
                           const SizedBox(height: 35),
 
-                          // DOCTOR LIST TITLE WITH WORKING "SEE ALL"
+                          // DOCTOR LIST TITLE
                           _buildSectionTitle(
                             title: 'Doctor list',
                             actionText: 'See all',
@@ -147,17 +235,36 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  String? _getFormattedAvatarUrl(String? url) {
+    if (url == null || url.trim().isEmpty) return null;
+    final trimmed = url.trim();
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+      return trimmed;
+    }
+    try {
+      String cleanPath = trimmed;
+      if (cleanPath.startsWith('avatars/')) {
+        cleanPath = cleanPath.replaceFirst('avatars/', '');
+      }
+      return Supabase.instance.client.storage.from('avatars').getPublicUrl(cleanPath);
+    } catch (_) {
+      return null;
+    }
+  }
+
   // ============================================================
   // HEADER
   // ============================================================
   Widget _buildHeader() {
+    final String? formattedAvatar = _getFormattedAvatarUrl(avatarUrl);
+
     return Row(
       children: [
-        const Expanded(
+        Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
+              const Text(
                 'Hello,',
                 style: TextStyle(
                   fontSize: 14,
@@ -165,10 +272,10 @@ class _HomePageState extends State<HomePage> {
                   fontWeight: FontWeight.w700,
                 ),
               ),
-              SizedBox(height: 3),
+              const SizedBox(height: 3),
               Text(
-                'Jerome Bell',
-                style: TextStyle(
+                userName,
+                style: const TextStyle(
                   fontSize: 23,
                   color: Color(0xFF222222),
                   fontWeight: FontWeight.bold,
@@ -191,19 +298,38 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
           child: ClipOval(
-            child: Image.asset(
-              'lib/images/doctor1.avif',
-              fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => const Icon(
-                Icons.person,
-                color: Color(0xFF8171E5),
-              ),
-            ),
+            child: (formattedAvatar != null && formattedAvatar.isNotEmpty)
+                ? Image.network(
+                    formattedAvatar,
+                    key: ValueKey(formattedAvatar),
+                    fit: BoxFit.cover,
+                    width: 48,
+                    height: 48,
+                    loadingBuilder: (context, child, loadingProgress) {
+                      if (loadingProgress == null) return child;
+                      return const Center(
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Color(0xFF8171E5),
+                        ),
+                      );
+                    },
+                    errorBuilder: (_, __, ___) => const Icon(
+                      Icons.person,
+                      color: Color(0xFF8171E5),
+                      size: 28,
+                    ),
+                  )
+                : const Icon(
+                    Icons.person,
+                    color: Color(0xFF8171E5),
+                    size: 28,
+                  ),
           ),
-        ),
-      ],
-    );
-  }
+      ),
+    ],
+  );
+}
 
   // ============================================================
   // MEDICAL BANNER
@@ -218,7 +344,6 @@ class _HomePageState extends State<HomePage> {
       ),
       child: Row(
         children: [
-          // LEFT IMAGE
           SizedBox(
             width: 200,
             height: double.infinity,
@@ -239,8 +364,6 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
           ),
-
-          // BANNER TEXT
           Expanded(
             child: Padding(
               padding: const EdgeInsets.only(left: 9),
@@ -321,7 +444,7 @@ class _HomePageState extends State<HomePage> {
           });
         },
         decoration: const InputDecoration(
-          hintText: 'How can we help you?',
+          hintText: 'Search doctors or specialties..',
           hintStyle: TextStyle(
             fontSize: 14,
             color: Color.fromARGB(255, 143, 143, 147),
@@ -339,7 +462,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   // ============================================================
-  // SECTION TITLE (UPDATED WITH ONTAP)
+  // SECTION TITLE
   // ============================================================
   Widget _buildSectionTitle({
     required String title,
@@ -393,6 +516,9 @@ class _HomePageState extends State<HomePage> {
             onTap: () {
               setState(() {
                 selectedCategoryIndex = index;
+                // Filter by selected category name
+                searchQuery = category['name'];
+                _searchController.text = category['name'];
               });
             },
             child: AnimatedContainer(
@@ -447,15 +573,7 @@ class _HomePageState extends State<HomePage> {
   // ============================================================
   Widget _buildDoctorListFromDatabase() {
     return FutureBuilder<List<Map<String, dynamic>>>(
-      future: Supabase.instance.client.from('doctors').select('''
-            id, 
-            name, 
-            years_experience, 
-            rating, 
-            image_url, 
-            specialties(name),
-            doctor_availability(duty_status, delay_minutes)
-          '''),
+      future: _doctorsFuture, // Use stored cached Future
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const SizedBox(
@@ -466,14 +584,24 @@ class _HomePageState extends State<HomePage> {
           );
         }
 
+        if (snapshot.hasError) {
+          return SizedBox(
+            height: 120,
+            child: Center(
+              child: Text('Error: ${snapshot.error}', style: const TextStyle(color: Colors.red)),
+            ),
+          );
+        }
+
         List<Map<String, dynamic>> doctors = snapshot.data ?? [];
 
-        // Filter based on search bar query
+        // Filter doctors based on search bar text
         if (searchQuery.isNotEmpty) {
           doctors = doctors.where((doc) {
             final name = (doc['name'] ?? '').toString().toLowerCase();
             final spec = (doc['specialties']?['name'] ?? '').toString().toLowerCase();
-            return name.contains(searchQuery.toLowerCase()) || spec.contains(searchQuery.toLowerCase());
+            final query = searchQuery.toLowerCase();
+            return name.contains(query) || spec.contains(query);
           }).toList();
         }
 
@@ -503,8 +631,21 @@ class _HomePageState extends State<HomePage> {
 
               // Extract Availability Info
               final List availabilityList = doc['doctor_availability'] ?? [];
+              final List upcomingAvailabilities = availabilityList.where((slot) {
+                final dateStr = slot['duty_date']?.toString();
+                if (dateStr == null || dateStr.trim().isEmpty) return false;
+                try {
+                  final slotDate = DateTime.parse(dateStr.trim());
+                  final now = DateTime.now();
+                  final today = DateTime(now.year, now.month, now.day);
+                  final compareDate = DateTime(slotDate.year, slotDate.month, slotDate.day);
+                  return compareDate.isAfter(today) || compareDate.isAtSameMomentAs(today);
+                } catch (_) {
+                  return true;
+                }
+              }).toList();
               final Map<String, dynamic>? availability =
-                  availabilityList.isNotEmpty ? availabilityList.first : null;
+                  upcomingAvailabilities.isNotEmpty ? upcomingAvailabilities.first : null;
 
               final String dutyStatus = availability?['duty_status'] ?? 'Off Duty';
               final int delayMinutes = availability?['delay_minutes'] ?? 0;
@@ -726,7 +867,6 @@ class _HomePageState extends State<HomePage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // HEADER BAR
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -746,11 +886,7 @@ class _HomePageState extends State<HomePage> {
               // FULL DOCTORS LIST
               Expanded(
                 child: FutureBuilder<List<Map<String, dynamic>>>(
-                  future: Supabase.instance.client.from('doctors').select('''
-                    id, name, years_experience, rating, image_url,
-                    specialties(name),
-                    doctor_availability(duty_status, delay_minutes)
-                  '''),
+                  future: _doctorsFuture,
                   builder: (context, snapshot) {
                     if (snapshot.connectionState == ConnectionState.waiting) {
                       return const Center(child: CircularProgressIndicator(color: Color(0xFF8171E5)));
