@@ -1,11 +1,68 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-// Import your page files here:
-import 'package:mediqueue/pages/home_page.dart';
-import 'package:mediqueue/pages/doctors_page.dart'; 
+import 'package:mediqueue/services/supabase_config.dart';
+import 'package:mediqueue/pages/login_page.dart';
+import 'package:mediqueue/pages/auth_wrapper.dart';
+import 'package:mediqueue/pages/profile_page.dart';
+import 'package:mediqueue/pages/appointment_management_page.dart';
+import 'package:mediqueue/pages/doctor_management_page.dart';
+import 'package:mediqueue/widgets/role_guard.dart';
 
-void main() {
-  runApp(const MyApp());
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  try {
+    await initializeSupabase();
+    runApp(const MyApp());
+  } catch (error, stackTrace) {
+    runApp(ErrorApp(error: error, stackTrace: stackTrace));
+  }
+}
+
+class ErrorApp extends StatelessWidget {
+  final Object error;
+  final StackTrace stackTrace;
+
+  const ErrorApp({super.key, required this.error, required this.stackTrace});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: Scaffold(
+        backgroundColor: Colors.white,
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Startup Error',
+                  style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  error.toString(),
+                  style: const TextStyle(fontSize: 16, color: Colors.redAccent),
+                ),
+                const SizedBox(height: 12),
+                Expanded(
+                  child: SingleChildScrollView(
+                    child: Text(
+                      stackTrace.toString(),
+                      style: const TextStyle(fontSize: 12, color: Colors.black54),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class MyApp extends StatelessWidget {
@@ -15,80 +72,18 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      // Enables smooth drag scrolling on desktop/web browsers
-      scrollBehavior: const CustomScrollBehavior(), 
-      home: const NavigationWrapper(),
-    );
-  }
-}
-
-// ============================================================
-// NAVIGATION WRAPPER (Handles switching between tabs)
-// ============================================================
-
-class NavigationWrapper extends StatefulWidget {
-  const NavigationWrapper({super.key});
-
-  @override
-  State<NavigationWrapper> createState() => _NavigationWrapperState();
-}
-
-class _NavigationWrapperState extends State<NavigationWrapper> {
-  int _selectedIndex = 0;
-
-  // List of screens for each Bottom Navigation tab
-  final List<Widget> _pages = const [
-    HomePage(),     // Index 0
-    DoctorsPage(),  // Index 1
-    Center(child: Text('My Queue Page')),       // Index 2
-    Center(child: Text('Bookings Page')),         // Index 3
-    Center(child: Text('Profile Page')),        // Index 4
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      // IndexedStack preserves page scroll positions when switching tabs
-      body: IndexedStack(
-        index: _selectedIndex,
-        children: _pages,
-      ),
-
-      // Single bottom navigation bar controlling the whole app
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _selectedIndex,
-        selectedItemColor: Colors.deepPurple,
-        unselectedItemColor: Colors.grey,
-        type: BottomNavigationBarType.fixed,
-        backgroundColor: Colors.white,
-        onTap: (index) {
-          setState(() {
-            _selectedIndex = index;
-          });
-        },
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home),
-            label: 'Home',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.medical_services),
-            label: 'Doctors',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.queue),
-            label: 'My Queue',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.bookmark_border),
-            label: 'Bookings',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.person),
-            label: 'Profile',
-          ),
-        ],
-      ),
+      scrollBehavior: const CustomScrollBehavior(),
+      home: const AuthWrapper(),
+      routes: {
+        '/login': (context) => const LoginPage(),
+        '/profile': (context) => const ProfilePage(),
+        '/appointments': (context) => const RoleGuard(
+              child: AppointmentManagementPage(),
+            ),
+        '/doctors': (context) => const RoleGuard(
+              child: DoctorManagementPage(),
+            ),
+      },
     );
   }
 }
