@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:mediqueue/main.dart'; // Navigates to NavigationWrapper
 import 'package:mediqueue/pages/login_page.dart';
+import 'package:mediqueue/pages/auth_wrapper.dart';
 
 class SignUpPage extends StatefulWidget {
   const SignUpPage({super.key});
@@ -75,10 +75,9 @@ class _SignUpPageState extends State<SignUpPage> {
             ),
           );
 
-          // 2. Navigate to Main Navigation
-          Navigator.pushAndRemoveUntil(
-            context,
-            MaterialPageRoute(builder: (context) => const NavigationWrapper()),
+          // Navigate through AuthWrapper so role-based routing applies.
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (_) => const AuthWrapper()),
             (route) => false,
           );
         }

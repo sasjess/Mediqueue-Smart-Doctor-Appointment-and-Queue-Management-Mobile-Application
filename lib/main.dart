@@ -1,27 +1,31 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
-// Page Imports
-import 'package:mediqueue/pages/book_appointment_page.dart';
+// Services & Security
+import 'package:mediqueue/services/supabase_config.dart';
+import 'package:mediqueue/widgets/role_guard.dart';
+
+// Pages
+import 'package:mediqueue/pages/auth_wrapper.dart';
 import 'package:mediqueue/pages/login_page.dart';
 import 'package:mediqueue/pages/home_page.dart';
-import 'package:mediqueue/pages/doctors_page.dart'; 
+import 'package:mediqueue/pages/doctors_page.dart';
 import 'package:mediqueue/pages/patient_profile_page.dart';
 import 'package:mediqueue/pages/my_queue_page.dart';
 import 'package:mediqueue/pages/booking_page.dart';
+import 'package:mediqueue/pages/book_appointment_page.dart';
+import 'package:mediqueue/pages/appointment_management_page.dart';
+import 'package:mediqueue/pages/doctor_management_page.dart';
 
-void main() async {
-  // Required before calling any async plugin initialization in Flutter
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize Supabase with your credentials from Supabase Dashboard -> Settings -> API
-  await Supabase.initialize(
-    url: 'https://aginmwptyqgzqxeerabu.supabase.co', // 👈 Replace with your Supabase URL
-    anonKey: 'sb_publishable_18KZIVgdhC5VS1U5MeqK4w_ijDuDxW0',          // 👈 Replace with your Supabase Anon Key
-  );
-
-  runApp(const MyApp());
+  try {
+    await initializeSupabase();
+    runApp(const MyApp());
+  } catch (error, stackTrace) {
+    runApp(ErrorApp(error: error, stackTrace: stackTrace));
+  }
 }
 
 class MyApp extends StatelessWidget {
@@ -31,15 +35,24 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      // Enables smooth mouse drag scrolling across Web & Desktop platforms
       scrollBehavior: const CustomScrollBehavior(),
-      home: const LoginPage(),
+      home: const AuthWrapper(),
+      routes: {
+        '/login': (context) => const LoginPage(),
+        '/patient-home': (context) => const NavigationWrapper(),
+        '/appointments': (context) => const RoleGuard(
+              child: AppointmentManagementPage(),
+            ),
+        '/doctors': (context) => const RoleGuard(
+              child: DoctorManagementPage(),
+            ),
+      },
     );
   }
 }
 
 // ============================================================
-// NAVIGATION WRAPPER (Main Tab Controller)
+// NAVIGATION WRAPPER (Patient Main Tab View)
 // ============================================================
 
 class NavigationWrapper extends StatefulWidget {
@@ -54,11 +67,11 @@ class _NavigationWrapperState extends State<NavigationWrapper> {
 
   // Ordered tabs: Home (0) -> Doctors (1) -> Book (2) -> Queue (3) -> Profile (4)
   final List<Widget> _pages = const [
-    HomePage(),             // Index 0
-    DoctorsPage(),          // Index 1
-    PatientSelectionBottomSheetContent(),  // Index 2
-    MyQueuePage(),          // Index 3
-    PatientProfilePage(),   // Index 4
+    HomePage(), // Index 0
+    DoctorsPage(), // Index 1
+    PatientSelectionBottomSheetContent(), // Index 2
+    MyQueuePage(), // Index 3
+    PatientProfilePage(), // Index 4
   ];
 
   @override
@@ -76,23 +89,23 @@ class _NavigationWrapperState extends State<NavigationWrapper> {
         type: BottomNavigationBarType.fixed,
         backgroundColor: Colors.white,
         onTap: (index) async {
-          // If the user tapped the Book tab (index 2), open the patient
-          // selection sheet and continue the booking flow from there.
+          // If user tapped the Book tab (index 2), show patient selection sheet
           if (index == 2) {
-            // Do not switch to a separate tab — keep current view and show sheet
-            final selectedPatient = await showPatientSelectionBottomSheet(context);
+            final selectedPatient =
+                await showPatientSelectionBottomSheet(context);
 
             if (selectedPatient != null && context.mounted) {
-              // Navigate to the full BookingPage for the chosen patient
               final result = await Navigator.push(
                 context,
-                MaterialPageRoute(builder: (context) => BookingPage(patient: selectedPatient)),
+                MaterialPageRoute(
+                  builder: (context) => BookingPage(patient: selectedPatient),
+                ),
               );
 
-              // Optionally handle the created booking returned from the page
               if (result != null && context.mounted) {
-                // Currently we just show a SnackBar confirming booking
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Booking saved')));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Booking saved')),
+                );
               }
             }
             return;
@@ -129,6 +142,62 @@ class _NavigationWrapperState extends State<NavigationWrapper> {
             label: 'Profile',
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ============================================================
+// ERROR APP (Startup Safety UI)
+// ============================================================
+
+class ErrorApp extends StatelessWidget {
+  final Object error;
+  final StackTrace stackTrace;
+
+  const ErrorApp({super.key, required this.error, required this.stackTrace});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: Scaffold(
+        backgroundColor: Colors.white,
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Startup Error',
+                  style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  error.toString(),
+                  style: const TextStyle(
+                    fontSize: 16,
+                    color: Colors.redAccent,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Expanded(
+                  child: SingleChildScrollView(
+                    child: Text(
+                      stackTrace.toString(),
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Colors.black54,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
