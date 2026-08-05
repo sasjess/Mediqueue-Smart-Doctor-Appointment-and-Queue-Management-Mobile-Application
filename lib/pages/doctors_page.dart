@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:mediqueue/services/supabase_service.dart';
+import 'package:mediqueue/pages/book_appointment_page.dart';
+import 'package:mediqueue/pages/booking_page.dart';
 
 class DoctorsPage extends StatefulWidget {
   const DoctorsPage({super.key});
@@ -151,9 +153,26 @@ class _DoctorsPageState extends State<DoctorsPage> {
         'General';
     final String? imageUrl = doctor['image_url'] ?? doctor['avatar_url'];
 
+    bool isTodayOrFutureDate(String? dateStr) {
+      if (dateStr == null || dateStr.trim().isEmpty) return false;
+      try {
+        final slotDate = DateTime.parse(dateStr.trim());
+        final now = DateTime.now();
+        final today = DateTime(now.year, now.month, now.day);
+        final compareDate = DateTime(slotDate.year, slotDate.month, slotDate.day);
+        return compareDate.isAfter(today) || compareDate.isAtSameMomentAs(today);
+      } catch (_) {
+        return true;
+      }
+    }
+
+    final upcomingAvailabilities = availabilities.where((slot) {
+      return isTodayOrFutureDate(slot['duty_date']?.toString());
+    }).toList();
+
     // Get primary availability slot if available
-    final Map<String, dynamic>? todaySlot = availabilities.isNotEmpty
-        ? Map<String, dynamic>.from(availabilities.first)
+    final Map<String, dynamic>? todaySlot = upcomingAvailabilities.isNotEmpty
+        ? Map<String, dynamic>.from(upcomingAvailabilities.first)
         : null;
 
     final String status = todaySlot?['duty_status'] ?? 'UNAVAILABLE';
@@ -205,7 +224,7 @@ class _DoctorsPageState extends State<DoctorsPage> {
                               ),
                             );
                           },
-                          errorBuilder: (_, __, ___) => const Icon(
+                          errorBuilder: (_, _, _) => const Icon(
                             Icons.person,
                             size: 32,
                             color: Color(0xFF8171E5),
@@ -285,8 +304,28 @@ class _DoctorsPageState extends State<DoctorsPage> {
               ElevatedButton(
                 onPressed: todaySlot == null
                     ? null
-                    : () {
-                        // Navigate to booking page
+                    : () async {
+                        final navigator = Navigator.of(context);
+                        final messenger = ScaffoldMessenger.of(context);
+                        final selectedPatient = await showPatientSelectionBottomSheet(context);
+                        if (selectedPatient != null && mounted) {
+                          final result = await navigator.push(
+                            MaterialPageRoute(
+                              builder: (context) => BookingPage(
+                                patient: selectedPatient,
+                                initialDoctor: doctor,
+                              ),
+                            ),
+                          );
+                          if (result != null && mounted) {
+                            messenger.showSnackBar(
+                              const SnackBar(
+                                content: Text('Booking confirmed!'),
+                                backgroundColor: Colors.green,
+                              ),
+                            );
+                          }
+                        }
                       },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF8171E5),
