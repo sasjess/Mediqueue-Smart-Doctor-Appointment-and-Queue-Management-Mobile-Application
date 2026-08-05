@@ -314,7 +314,7 @@ class _HomePageState extends State<HomePage> {
                         ),
                       );
                     },
-                    errorBuilder: (_, __, ___) => const Icon(
+                    errorBuilder: (_, _, _) => const Icon(
                       Icons.person,
                       color: Color(0xFF8171E5),
                       size: 28,
@@ -724,7 +724,7 @@ class _HomePageState extends State<HomePage> {
                               ),
                             );
                           },
-                          errorBuilder: (_, __, ___) => const Icon(
+                          errorBuilder: (_, _, _) => const Icon(
                             Icons.person,
                             size: 35,
                             color: Color(0xFF7565D1),
@@ -735,7 +735,7 @@ class _HomePageState extends State<HomePage> {
                           width: 65,
                           height: 65,
                           fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => const Icon(
+                          errorBuilder: (_, _, _) => const Icon(
                             Icons.person,
                             size: 35,
                             color: Color(0xFF7565D1),
