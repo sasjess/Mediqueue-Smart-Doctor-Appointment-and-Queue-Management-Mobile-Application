@@ -20,22 +20,35 @@ class OnboardingPage extends StatelessWidget {
                 Expanded(
                   flex: 4,
                   child: Padding(
-                    padding: const EdgeInsets.all(8.0),
-                    child: Center(
-                      child: SizedBox(
-                        width: double.infinity,
-                        height: double.infinity,
-                        child: Image.asset(
-                          'lib/images/starting.png',
-                          fit: BoxFit.contain,
-                          errorBuilder: (context, error, stackTrace) =>
-                              const Icon(
-                            Icons.medical_services_outlined,
-                            size: 150,
-                            color: Color(0xFF8171E5),
+                    padding: const EdgeInsets.fromLTRB(8.0, 0.0, 8.0, 8.0),
+                    child: Stack(
+                      children: [
+                        Center(
+                          child: SizedBox(
+                            width: double.infinity,
+                            height: double.infinity,
+                            child: Image.asset(
+                              'lib/images/starting.png',
+                              fit: BoxFit.contain,
+                              errorBuilder: (context, error, stackTrace) =>
+                                  const Icon(
+                                Icons.medical_services_outlined,
+                                size: 150,
+                                color: Color(0xFF8171E5),
+                              ),
+                            ),
                           ),
                         ),
-                      ),
+                        Positioned(
+                          top: 0,
+                          left: 8,
+                          child: Image.asset(
+                            'lib/images/logo11.png',
+                            width: 140,
+                            fit: BoxFit.contain,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
