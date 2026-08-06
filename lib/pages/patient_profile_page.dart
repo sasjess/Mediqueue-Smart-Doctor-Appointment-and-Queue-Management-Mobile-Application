@@ -299,7 +299,10 @@ class _PatientProfilePageState extends State<PatientProfilePage> {
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA),
       appBar: AppBar(
-        title: Text(isStaff ? 'Staff Profile' : 'Profile'),
+        title: Text(
+          isStaff ? 'Staff Profile' : 'Profile',
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
         backgroundColor: Colors.white,
         foregroundColor: Colors.black,
         elevation: 0,

@@ -1377,7 +1377,7 @@ class _DoctorManagementPageState extends State<DoctorManagementPage> {
                           ),
                           SizedBox(height: 4),
                           Text(
-                            'Create, update, and manage doctor profiles with the same polished flow as the patient experience.',
+                            'Create, update, and manage doctor profiles',
                             style: TextStyle(
                               fontSize: 13,
                               color: Color(0xFF6B7280),
