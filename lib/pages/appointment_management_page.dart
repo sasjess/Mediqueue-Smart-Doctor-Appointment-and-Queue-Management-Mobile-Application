@@ -13,10 +13,12 @@ class AppointmentManagementPage extends StatefulWidget {
 
 class _AppointmentManagementPageState extends State<AppointmentManagementPage> {
   final SupabaseService _supabaseService = SupabaseService();
+  final TextEditingController _searchController = TextEditingController();
 
   List<Map<String, dynamic>> _bookings = [];
   bool _isLoading = true;
   bool _isUpdating = false;
+  String _searchQuery = '';
   StreamSubscription<List<Map<String, dynamic>>>? _bookingsSubscription;
 
   @override
@@ -31,8 +33,28 @@ class _AppointmentManagementPageState extends State<AppointmentManagementPage> {
 
   @override
   void dispose() {
+    _searchController.dispose();
     _bookingsSubscription?.cancel();
     super.dispose();
+  }
+
+  List<Map<String, dynamic>> _filteredBookings() {
+    final query = _searchQuery.trim().toLowerCase();
+    if (query.isEmpty) return _bookings;
+
+    return _bookings.where((booking) {
+      final patientName = booking['patients']?['name']?.toString().toLowerCase() ?? '';
+      final doctorName = booking['doctors']?['name']?.toString().toLowerCase() ?? '';
+      final status = booking['status']?.toString().toLowerCase() ?? '';
+      final queueNumber = booking['queue_number']?.toString().toLowerCase() ?? '';
+      final bookingCode = booking['booking_code']?.toString().toLowerCase() ?? '';
+
+      return patientName.contains(query) ||
+          doctorName.contains(query) ||
+          status.contains(query) ||
+          queueNumber.contains(query) ||
+          bookingCode.contains(query);
+    }).toList();
   }
 
   Future<void> _loadBookings({bool showLoader = true}) async {
@@ -103,33 +125,6 @@ class _AppointmentManagementPageState extends State<AppointmentManagementPage> {
     } catch (e) {
       if (mounted) {
         _showSnackbar('Error cancelling appointment: $e', success: false);
-      }
-    } finally {
-      if (mounted) setState(() => _isUpdating = false);
-    }
-  }
-
-  Future<void> _completeBooking(Map<String, dynamic> booking) async {
-    if (_isUpdating) return;
-    setState(() => _isUpdating = true);
-
-    try {
-      final success = await _supabaseService.updateBookingStatus(
-        bookingId: booking['booking_id'],
-        status: 'COMPLETED',
-      );
-
-      if (!mounted) return;
-
-      if (success) {
-        await _loadBookings(showLoader: false);
-        _showSnackbar('Appointment marked as completed', success: true);
-      } else {
-        _showSnackbar('Unable to complete appointment', success: false);
-      }
-    } catch (e) {
-      if (mounted) {
-        _showSnackbar('Error completing appointment: $e', success: false);
       }
     } finally {
       if (mounted) setState(() => _isUpdating = false);
@@ -267,17 +262,6 @@ class _AppointmentManagementPageState extends State<AppointmentManagementPage> {
                   style: TextStyle(color: Colors.black),
                 ),
               ),
-              ElevatedButton(
-                onPressed: isTerminal || _isUpdating
-                    ? null
-                    : () => _completeBooking(booking),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color.fromARGB(255, 245, 239, 247),
-                  foregroundColor: Colors.black,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-                child: const Text('Complete'),
-              ),
             ],
           ),
         ],
@@ -287,6 +271,8 @@ class _AppointmentManagementPageState extends State<AppointmentManagementPage> {
 
   @override
   Widget build(BuildContext context) {
+    final filteredBookings = _filteredBookings();
+
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FE),
       appBar: AppBar(
@@ -306,23 +292,55 @@ class _AppointmentManagementPageState extends State<AppointmentManagementPage> {
             : RefreshIndicator(
                 color: const Color.fromARGB(255, 7, 7, 7),
                 onRefresh: _loadBookings,
-                child: _bookings.isEmpty
-                    ? ListView(
-                        physics: const AlwaysScrollableScrollPhysics(),
-                        children: const [
-                          SizedBox(height: 120),
-                          Center(child: Text('No active appointments found.')),
-                        ],
-                      )
-                    : Padding(
-                        padding: const EdgeInsets.all(16.0),
-                        child: ListView.builder(
-                          physics: const AlwaysScrollableScrollPhysics(),
-                          itemCount: _bookings.length,
-                          itemBuilder: (context, index) =>
-                              _buildBookingCard(_bookings[index]),
+                child: ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.all(16),
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: const Color(0xFFEEEEF5)),
+                      ),
+                      child: TextField(
+                        controller: _searchController,
+                        onChanged: (value) {
+                          setState(() => _searchQuery = value);
+                        },
+                        decoration: InputDecoration(
+                          prefixIcon: const Icon(Icons.search, color: Colors.grey),
+                          hintText: 'Search by patient, doctor, status, token, or code',
+                          hintStyle: const TextStyle(fontSize: 13, color: Colors.grey),
+                          border: InputBorder.none,
+                          suffixIcon: _searchQuery.isEmpty
+                              ? null
+                              : IconButton(
+                                  onPressed: () {
+                                    _searchController.clear();
+                                    setState(() => _searchQuery = '');
+                                  },
+                                  icon: const Icon(Icons.close, size: 18),
+                                  tooltip: 'Clear search',
+                                ),
                         ),
                       ),
+                    ),
+                    const SizedBox(height: 12),
+                    if (_bookings.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 36),
+                        child: Center(child: Text('No active appointments found.')),
+                      )
+                    else if (filteredBookings.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 36),
+                        child: Center(child: Text('No matching appointments found.')),
+                      )
+                    else
+                      ...filteredBookings.map(_buildBookingCard),
+                  ],
+                ),
               ),
       ),
     );
