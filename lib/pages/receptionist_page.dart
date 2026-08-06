@@ -15,9 +15,11 @@ class ReceptionistPage extends StatefulWidget {
 
 class _ReceptionistPageState extends State<ReceptionistPage> {
   final SupabaseService _supabaseService = SupabaseService();
+  final TextEditingController _searchController = TextEditingController();
 
   Map<String, dynamic>? _scannedBooking;
   List<Map<String, dynamic>> _activeBookings = [];
+  String _searchQuery = '';
   bool _isLoadingBookings = true;
   bool _isUpdating = false;
   StreamSubscription<List<Map<String, dynamic>>>? _bookingsSubscription;
@@ -34,8 +36,22 @@ class _ReceptionistPageState extends State<ReceptionistPage> {
 
   @override
   void dispose() {
+    _searchController.dispose();
     _bookingsSubscription?.cancel();
     super.dispose();
+  }
+
+  List<Map<String, dynamic>> _filteredBookings() {
+    final query = _searchQuery.trim().toLowerCase();
+    if (query.isEmpty) return _activeBookings;
+
+    return _activeBookings.where((booking) {
+      final patientName =
+          booking['patients']?['name']?.toString().toLowerCase() ?? '';
+      final doctorName =
+          booking['doctors']?['name']?.toString().toLowerCase() ?? '';
+      return patientName.contains(query) || doctorName.contains(query);
+    }).toList();
   }
 
   Future<void> _loadBookings({bool showLoader = true}) async {
@@ -82,18 +98,14 @@ class _ReceptionistPageState extends State<ReceptionistPage> {
     }
   }
 
-  Future<void> _changeBookingStatus(
-    Map<String, dynamic> booking,
-    String status,
-  ) async {
+  Future<void> _markArrived(Map<String, dynamic> booking) async {
     if (_isUpdating) return;
 
     setState(() => _isUpdating = true);
 
     try {
-      final updated = await _supabaseService.updateBookingStatus(
-        bookingId: booking['booking_id'],
-        status: status,
+      final updated = await _supabaseService.markBookingArrivedByCode(
+        booking['booking_code'] as String,
       );
 
       if (!mounted) return;
@@ -101,22 +113,239 @@ class _ReceptionistPageState extends State<ReceptionistPage> {
       if (updated) {
         await _loadBookings(showLoader: false);
         await _refreshScannedBooking();
-        _showSnackBar('Status updated to ${status.toUpperCase()}', success: true);
+        _showSnackBar('Status updated to ARRIVED', success: true);
       } else {
-        _showSnackBar('Unable to update status. Please try again.', success: false);
+        _showSnackBar('Unable to mark arrival.', success: false);
       }
     } catch (e) {
       if (mounted) {
-        _showSnackBar('Error updating status: $e', success: false);
+        _showSnackBar('Error updating arrival status: $e', success: false);
       }
     } finally {
       if (mounted) setState(() => _isUpdating = false);
     }
   }
 
+  Future<void> _markServing(Map<String, dynamic> booking) async {
+    if (_isUpdating) return;
+
+    setState(() => _isUpdating = true);
+
+    try {
+      final updated = await _supabaseService.markBookingServingByCode(
+        booking['booking_code'] as String,
+      );
+
+      if (!mounted) return;
+
+      if (updated) {
+        await _loadBookings(showLoader: false);
+        await _refreshScannedBooking();
+        _showSnackBar('Current patient marked SERVING', success: true);
+      } else {
+        _showSnackBar('Unable to mark serving.', success: false);
+      }
+    } catch (e) {
+      if (mounted) {
+        _showSnackBar('Error updating serving status: $e', success: false);
+      }
+    } finally {
+      if (mounted) setState(() => _isUpdating = false);
+    }
+  }
+
+  Future<void> _skipAndRequeue(Map<String, dynamic> booking) async {
+    if (_isUpdating) return;
+
+    setState(() => _isUpdating = true);
+
+    try {
+      final newBooking = await _supabaseService.skipAndRequeueBookingByCode(
+        booking['booking_code'] as String,
+      );
+
+      if (!mounted) return;
+
+      if (newBooking != null) {
+        await _loadBookings(showLoader: false);
+        setState(() => _scannedBooking = newBooking);
+        _showSnackBar('Ticket cancelled and reissued at the end of the queue.', success: true);
+      } else {
+        _showSnackBar('Unable to requeue this ticket.', success: false);
+      }
+    } catch (e) {
+      if (mounted) {
+        _showSnackBar('Error requeueing ticket: $e', success: false);
+      }
+    } finally {
+      if (mounted) setState(() => _isUpdating = false);
+    }
+  }
+
+  Future<void> _markCompleted(Map<String, dynamic> booking) async {
+    if (_isUpdating) return;
+
+    setState(() => _isUpdating = true);
+
+    try {
+      final updated = await _supabaseService.markBookingCompletedByCode(
+        booking['booking_code'] as String,
+      );
+
+      if (!mounted) return;
+
+      if (updated) {
+        await _loadBookings(showLoader: false);
+        await _refreshScannedBooking();
+        _showSnackBar('Appointment marked COMPLETED', success: true);
+      } else {
+        _showSnackBar('Unable to mark this appointment completed.', success: false);
+      }
+    } catch (e) {
+      if (mounted) {
+        _showSnackBar('Error completing appointment: $e', success: false);
+      }
+    } finally {
+      if (mounted) setState(() => _isUpdating = false);
+    }
+  }
+
+  Future<void> _showScanActions(Map<String, dynamic> booking) async {
+    if (!mounted) return;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        final bookingCode = booking['booking_code']?.toString() ?? '--';
+        final patientName = booking['patients']?['name']?.toString() ?? 'Patient';
+        final doctorName = booking['doctors']?['name']?.toString() ?? 'Doctor';
+        final currentStatus = booking['status']?.toString().toUpperCase() ?? 'BOOKED';
+
+        return Container(
+          padding: const EdgeInsets.fromLTRB(18, 12, 18, 18),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 44,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFD7D7E5),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Scanned booking',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              Text('$patientName • $doctorName'),
+              const SizedBox(height: 4),
+              Text('Code: $bookingCode'),
+              const SizedBox(height: 4),
+              Text('Current status: $currentStatus'),
+              const SizedBox(height: 18),
+              Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: _isUpdating
+                          ? null
+                          : () async {
+                              Navigator.of(sheetContext).pop();
+                              await _markArrived(booking);
+                            },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF8171E5),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                      ),
+                      child: const Text('Mark arrived'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: _isUpdating
+                          ? null
+                          : () async {
+                              Navigator.of(sheetContext).pop();
+                              await _markServing(booking);
+                            },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF2A7B3F),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                      ),
+                      child: const Text('Mark serving'),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: _isUpdating
+                      ? null
+                      : () async {
+                          Navigator.of(sheetContext).pop();
+                          await _markCompleted(booking);
+                        },
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFF6B3AB7),
+                    side: const BorderSide(color: Color(0xFFE5D7FF)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                  child: const Text('Mark completed'),
+                ),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: _isUpdating
+                      ? null
+                      : () async {
+                          Navigator.of(sheetContext).pop();
+                          await _skipAndRequeue(booking);
+                        },
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFFB22C2C),
+                    side: const BorderSide(color: Color(0xFFF0C7C7)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                  child: const Text('Skip and requeue'),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   Future<void> _handleScanResult(String bookingCode) async {
     setState(() {
-      _isUpdating = true;
       _scannedBooking = null;
     });
 
@@ -132,19 +361,11 @@ class _ReceptionistPageState extends State<ReceptionistPage> {
 
       setState(() => _scannedBooking = booking);
       _showSnackBar('Booking found. You can update the status below.', success: true);
-
-      final currentStatus = (booking['status'] ?? '').toString().toUpperCase();
-      if (currentStatus == 'WAITING' ||
-          currentStatus == 'BOOKED' ||
-          currentStatus == 'CONFIRMED') {
-        await _changeBookingStatus(booking, 'ARRIVED');
-      }
+      await _showScanActions(booking);
     } catch (e) {
       if (mounted) {
         _showSnackBar('Scan failed: $e', success: false);
       }
-    } finally {
-      if (mounted) setState(() => _isUpdating = false);
     }
   }
 
@@ -165,11 +386,16 @@ class _ReceptionistPageState extends State<ReceptionistPage> {
     Color textColor;
 
     switch (statusText) {
+      case 'WAITING':
+      case 'BOOKED':
+        background = const Color(0xFFFFF6E6);
+        textColor = const Color(0xFFAA6F17);
+        break;
       case 'ARRIVED':
         background = const Color(0xFFE6F4EA);
         textColor = const Color(0xFF2A7B3F);
         break;
-      case 'ADMITTED':
+      case 'SERVING':
         background = const Color(0xFFEAF4FF);
         textColor = const Color(0xFF27548C);
         break;
@@ -186,8 +412,8 @@ class _ReceptionistPageState extends State<ReceptionistPage> {
         textColor = const Color(0xFF5A45A7);
         break;
       default:
-        background = const Color(0xFFFFF6E6);
-        textColor = const Color(0xFFAA6F17);
+        background = const Color(0xFFF1F1F7);
+        textColor = const Color(0xFF5A5A66);
         break;
     }
 
@@ -211,7 +437,7 @@ class _ReceptionistPageState extends State<ReceptionistPage> {
   Widget _buildBookingTile(Map<String, dynamic> booking) {
     final patientName = booking['patients']?['name']?.toString() ?? 'Patient';
     final doctorName = booking['doctors']?['name']?.toString() ?? 'Doctor';
-    final status = booking['status']?.toString().toUpperCase() ?? 'WAITING';
+    final status = booking['status']?.toString().toUpperCase() ?? 'BOOKED';
     final queueNumber = booking['queue_number']?.toString() ?? '--';
     final isTerminal = status == 'COMPLETED' || status == 'CANCELLED';
 
@@ -271,7 +497,7 @@ class _ReceptionistPageState extends State<ReceptionistPage> {
               ElevatedButton(
                 onPressed: isTerminal || _isUpdating
                     ? null
-                    : () => _changeBookingStatus(booking, 'ARRIVED'),
+                    : () => _markArrived(booking),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF8171E5),
                   shape: RoundedRectangleBorder(
@@ -284,7 +510,7 @@ class _ReceptionistPageState extends State<ReceptionistPage> {
               ElevatedButton(
                 onPressed: isTerminal || _isUpdating
                     ? null
-                    : () => _changeBookingStatus(booking, 'COMPLETED'),
+                    : () => _markServing(booking),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF2A7B3F),
                   shape: RoundedRectangleBorder(
@@ -292,21 +518,7 @@ class _ReceptionistPageState extends State<ReceptionistPage> {
                   ),
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                 ),
-                child: const Text('Complete'),
-              ),
-              OutlinedButton(
-                onPressed: isTerminal || _isUpdating
-                    ? null
-                    : () => _changeBookingStatus(booking, 'CANCELLED'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: const Color(0xFF6B3AB7),
-                  side: const BorderSide(color: Color(0xFFDDD9F5)),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                ),
-                child: const Text('Cancel'),
+                child: const Text('Mark serving'),
               ),
             ],
           ),
@@ -317,6 +529,8 @@ class _ReceptionistPageState extends State<ReceptionistPage> {
 
   @override
   Widget build(BuildContext context) {
+    final filteredBookings = _filteredBookings();
+
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FE),
       appBar: AppBar(
@@ -381,6 +595,37 @@ class _ReceptionistPageState extends State<ReceptionistPage> {
               ),
             ),
             const SizedBox(height: 18),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFFEEEEF5)),
+              ),
+              child: TextField(
+                controller: _searchController,
+                onChanged: (value) {
+                  setState(() => _searchQuery = value);
+                },
+                decoration: InputDecoration(
+                  prefixIcon: const Icon(Icons.search, color: Colors.grey),
+                  hintText: 'Search by patient or doctor name',
+                  hintStyle: const TextStyle(fontSize: 13, color: Colors.grey),
+                  border: InputBorder.none,
+                  suffixIcon: _searchQuery.isEmpty
+                      ? null
+                      : IconButton(
+                          onPressed: () {
+                            _searchController.clear();
+                            setState(() => _searchQuery = '');
+                          },
+                          icon: const Icon(Icons.close, size: 18),
+                          tooltip: 'Clear search',
+                        ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
             if (_scannedBooking != null) ...[
               Container(
                 padding: const EdgeInsets.all(18),
@@ -414,7 +659,7 @@ class _ReceptionistPageState extends State<ReceptionistPage> {
                         ElevatedButton(
                           onPressed: _isUpdating
                               ? null
-                              : () => _changeBookingStatus(_scannedBooking!, 'ADMITTED'),
+                              : () => _markArrived(_scannedBooking!),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFF8171E5),
                             shape: RoundedRectangleBorder(
@@ -427,7 +672,7 @@ class _ReceptionistPageState extends State<ReceptionistPage> {
                         ElevatedButton(
                           onPressed: _isUpdating
                               ? null
-                              : () => _changeBookingStatus(_scannedBooking!, 'COMPLETED'),
+                              : () => _markServing(_scannedBooking!),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFF2A7B3F),
                             shape: RoundedRectangleBorder(
@@ -435,21 +680,34 @@ class _ReceptionistPageState extends State<ReceptionistPage> {
                             ),
                             padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
                           ),
-                          child: const Text('Complete visit'),
+                          child: const Text('Mark serving'),
                         ),
-                        OutlinedButton(
+                        ElevatedButton(
                           onPressed: _isUpdating
                               ? null
-                              : () => _changeBookingStatus(_scannedBooking!, 'CANCELLED'),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: const Color(0xFFB22C2C),
-                            side: const BorderSide(color: Color(0xFFEEE3E3)),
+                              : () => _markCompleted(_scannedBooking!),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF6B3AB7),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(14),
                             ),
                             padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
                           ),
-                          child: const Text('Cancel appointment'),
+                          child: const Text('Mark completed'),
+                        ),
+                        OutlinedButton(
+                          onPressed: _isUpdating
+                              ? null
+                              : () => _skipAndRequeue(_scannedBooking!),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: const Color(0xFFB22C2C),
+                            side: const BorderSide(color: Color(0xFFF0C7C7)),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                          ),
+                          child: const Text('Skip and requeue'),
                         ),
                       ],
                     ),
@@ -496,8 +754,16 @@ class _ReceptionistPageState extends State<ReceptionistPage> {
                   style: TextStyle(color: Colors.grey),
                 ),
               )
+            else if (filteredBookings.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 24),
+                child: Text(
+                  'No matching appointments found.',
+                  style: TextStyle(color: Colors.grey),
+                ),
+              )
             else
-              ..._activeBookings.map(_buildBookingTile),
+              ...filteredBookings.map(_buildBookingTile),
             const SizedBox(height: 24),
             Container(
               padding: const EdgeInsets.all(18),

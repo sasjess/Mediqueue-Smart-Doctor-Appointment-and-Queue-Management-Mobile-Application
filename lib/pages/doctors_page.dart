@@ -41,6 +41,52 @@ class _DoctorsPageState extends State<DoctorsPage> {
     }
   }
 
+  DateTime? _parseDutyDate(String? dateStr) {
+    if (dateStr == null || dateStr.trim().isEmpty) return null;
+    try {
+      final dt = DateTime.parse(dateStr.trim());
+      return DateTime(dt.year, dt.month, dt.day);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String _deriveDisplayDutyStatus(Map<String, dynamic>? slot) {
+    if (slot == null) return 'UNAVAILABLE';
+
+    final stored = slot['duty_status']?.toString().trim().toUpperCase();
+    return (stored == null || stored.isEmpty) ? 'UNAVAILABLE' : stored;
+  }
+
+  Map<String, dynamic>? _primaryAvailabilityForDisplay(List availabilities) {
+    final normalized = availabilities
+        .whereType<Map>()
+        .map((raw) => Map<String, dynamic>.from(raw))
+        .toList();
+    if (normalized.isEmpty) return null;
+
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+
+    normalized.sort((a, b) {
+      final da = _parseDutyDate(a['duty_date']?.toString());
+      final db = _parseDutyDate(b['duty_date']?.toString());
+      if (da == null && db == null) return 0;
+      if (da == null) return 1;
+      if (db == null) return -1;
+      return da.compareTo(db);
+    });
+
+    for (final slot in normalized) {
+      final day = _parseDutyDate(slot['duty_date']?.toString());
+      if (day != null && (day.isAtSameMomentAs(today) || day.isAfter(today))) {
+        return slot;
+      }
+    }
+
+    return normalized.first;
+  }
+
   @override
   Widget build(BuildContext context) {
     // Filter doctors list based on search query
@@ -153,31 +199,12 @@ class _DoctorsPageState extends State<DoctorsPage> {
         'General';
     final String? imageUrl = doctor['image_url'] ?? doctor['avatar_url'];
 
-    bool isTodayOrFutureDate(String? dateStr) {
-      if (dateStr == null || dateStr.trim().isEmpty) return false;
-      try {
-        final slotDate = DateTime.parse(dateStr.trim());
-        final now = DateTime.now();
-        final today = DateTime(now.year, now.month, now.day);
-        final compareDate = DateTime(slotDate.year, slotDate.month, slotDate.day);
-        return compareDate.isAfter(today) || compareDate.isAtSameMomentAs(today);
-      } catch (_) {
-        return true;
-      }
-    }
+    final Map<String, dynamic>? todaySlot = _primaryAvailabilityForDisplay(availabilities);
 
-    final upcomingAvailabilities = availabilities.where((slot) {
-      return isTodayOrFutureDate(slot['duty_date']?.toString());
-    }).toList();
-
-    // Get primary availability slot if available
-    final Map<String, dynamic>? todaySlot = upcomingAvailabilities.isNotEmpty
-        ? Map<String, dynamic>.from(upcomingAvailabilities.first)
-        : null;
-
-    final String status = todaySlot?['duty_status'] ?? 'UNAVAILABLE';
+    final String status = _deriveDisplayDutyStatus(todaySlot);
     final String startTime = (todaySlot?['start_time'] ?? '').toString();
     final String endTime = (todaySlot?['end_time'] ?? '').toString();
+    final bool isAvailable = status == 'AVAILABLE';
 
     // Helper to safely format time standard format (e.g. "09:00")
     String formatTime(String time) {
@@ -261,9 +288,9 @@ class _DoctorsPageState extends State<DoctorsPage> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
-                  color: (status == 'AVAILABLE' || status.toLowerCase() == 'on duty')
-                      ? Colors.green.withOpacity(0.1)
-                      : Colors.orange.withOpacity(0.1),
+                  color: isAvailable
+                      ? Colors.green.withValues(alpha: 0.1)
+                      : Colors.orange.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
@@ -271,7 +298,7 @@ class _DoctorsPageState extends State<DoctorsPage> {
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.bold,
-                    color: (status == 'AVAILABLE' || status.toLowerCase() == 'on duty')
+                    color: isAvailable
                         ? Colors.green
                         : Colors.orange,
                   ),

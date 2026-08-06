@@ -2,6 +2,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:mediqueue/pages/SpecialistPage.dart';
+import 'package:mediqueue/services/supabase_service.dart';
+import 'package:mediqueue/widgets/ticket_card.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -11,9 +13,11 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
+  final SupabaseService _supabaseService = SupabaseService();
   final TextEditingController _searchController = TextEditingController();
   String searchQuery = '';
   int selectedCategoryIndex = 0; // Fixed: Declared missing category state variable
+  bool _isLoadingTickets = false;
 
   String userName = 'User';
   String? avatarUrl;
@@ -135,7 +139,7 @@ class _HomePageState extends State<HomePage> {
           rating, 
           image_url, 
           specialties(name),
-          doctor_availability(duty_status, delay_minutes)
+          doctor_availability(duty_date, duty_status, delay_minutes)
         ''');
     return List<Map<String, dynamic>>.from(response);
   }
@@ -372,7 +376,7 @@ class _HomePageState extends State<HomePage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
-                    'How do you feel?',
+                    'Need your ticket?',
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w700,
@@ -381,7 +385,7 @@ class _HomePageState extends State<HomePage> {
                   ),
                   const SizedBox(height: 5),
                   const Text(
-                    'Fill out your medical\ncard right now.',
+                    'Find active tickets by\npatient profile instantly.',
                     style: TextStyle(
                       fontSize: 14,
                       height: 1.25,
@@ -393,7 +397,7 @@ class _HomePageState extends State<HomePage> {
                     height: 35,
                     width: 139,
                     child: ElevatedButton(
-                      onPressed: () {},
+                      onPressed: _isLoadingTickets ? null : _openGetMyTicketFlow,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF8171E5),
                         foregroundColor: Colors.white,
@@ -404,7 +408,7 @@ class _HomePageState extends State<HomePage> {
                         ),
                       ),
                       child: const Text(
-                        'Get Started',
+                        'Get My Ticket',
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
@@ -418,6 +422,256 @@ class _HomePageState extends State<HomePage> {
           ),
         ],
       ),
+    );
+  }
+
+  String _formatTicketTime(Map<String, dynamic> ticket) {
+    final bookingDate = ticket['booking_date']?.toString() ?? '';
+
+    String startTime = '';
+    final availability = ticket['doctor_availability'];
+    if (availability is Map<String, dynamic>) {
+      startTime = availability['start_time']?.toString() ?? '';
+    } else if (availability is List && availability.isNotEmpty) {
+      final first = availability.first;
+      if (first is Map<String, dynamic>) {
+        startTime = first['start_time']?.toString() ?? '';
+      }
+    }
+
+    if (bookingDate.isNotEmpty && startTime.isNotEmpty) {
+      return '$bookingDate $startTime';
+    }
+    return bookingDate.isNotEmpty ? bookingDate : 'Today';
+  }
+
+  DateTime? _parseDutyDate(String? dateStr) {
+    if (dateStr == null || dateStr.trim().isEmpty) return null;
+    try {
+      final dt = DateTime.parse(dateStr.trim());
+      return DateTime(dt.year, dt.month, dt.day);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String _deriveDisplayDutyStatus(Map<String, dynamic>? slot) {
+    if (slot == null) return 'UNAVAILABLE';
+    final stored = slot['duty_status']?.toString().trim().toUpperCase();
+    return (stored == null || stored.isEmpty) ? 'UNAVAILABLE' : stored;
+  }
+
+  Map<String, dynamic>? _primaryAvailabilityForDisplay(List<dynamic> slots) {
+    final normalized = slots
+        .whereType<Map>()
+        .map((raw) => Map<String, dynamic>.from(raw))
+        .toList();
+    if (normalized.isEmpty) return null;
+
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+
+    normalized.sort((a, b) {
+      final da = _parseDutyDate(a['duty_date']?.toString());
+      final db = _parseDutyDate(b['duty_date']?.toString());
+      if (da == null && db == null) return 0;
+      if (da == null) return 1;
+      if (db == null) return -1;
+      return da.compareTo(db);
+    });
+
+    for (final slot in normalized) {
+      final day = _parseDutyDate(slot['duty_date']?.toString());
+      if (day != null && (day.isAtSameMomentAs(today) || day.isAfter(today))) {
+        return slot;
+      }
+    }
+
+    return normalized.first;
+  }
+
+  Future<void> _openGetMyTicketFlow() async {
+    if (_isLoadingTickets) return;
+
+    setState(() => _isLoadingTickets = true);
+    try {
+      final profiles = await _supabaseService.fetchProfilesWithActiveTickets();
+      if (!mounted) return;
+
+      if (profiles.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No active tickets found for your profiles.')),
+        );
+        return;
+      }
+
+      final selectedProfile = await showModalBottomSheet<Map<String, dynamic>>(
+        context: context,
+        showDragHandle: true,
+        builder: (sheetContext) {
+          return SafeArea(
+            child: ListView(
+              shrinkWrap: true,
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+              children: [
+                const Text(
+                  'Select Patient Profile',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 8),
+                ...profiles.map((profile) {
+                  final name = profile['name']?.toString() ?? 'Patient';
+                  final relation = profile['relationship']?.toString() ?? '';
+                  return ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const CircleAvatar(
+                      backgroundColor: Color(0xFFEDEAFF),
+                      child: Icon(Icons.person, color: Color(0xFF8171E5)),
+                    ),
+                    title: Text(name),
+                    subtitle: relation.isNotEmpty ? Text(relation) : null,
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => Navigator.pop(sheetContext, profile),
+                  );
+                }),
+              ],
+            ),
+          );
+        },
+      );
+
+      if (selectedProfile == null || !mounted) return;
+      await _showTicketsForProfile(selectedProfile);
+    } finally {
+      if (mounted) {
+        setState(() => _isLoadingTickets = false);
+      }
+    }
+  }
+
+  Future<void> _showTicketsForProfile(Map<String, dynamic> profile) async {
+    final patientId = profile['patient_id'] is int
+        ? profile['patient_id'] as int
+        : int.tryParse(profile['patient_id']?.toString() ?? '') ?? 0;
+
+    if (patientId <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Invalid profile selected.')),
+      );
+      return;
+    }
+
+    final tickets = await _supabaseService.fetchActiveTicketsForPatient(
+      patientId: patientId,
+    );
+
+    if (!mounted) return;
+
+    if (tickets.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No active tickets for this profile.')),
+      );
+      return;
+    }
+
+    final profileName = profile['name']?.toString() ?? 'Patient';
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheetContext) {
+        final maxHeight = MediaQuery.of(sheetContext).size.height * 0.88;
+        return SafeArea(
+          child: SizedBox(
+            height: maxHeight,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(8, 6, 8, 4),
+                  child: Row(
+                    children: [
+                      TextButton.icon(
+                        onPressed: () => Navigator.pop(sheetContext),
+                        icon: const Icon(Icons.arrow_back),
+                        label: const Text('Back'),
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          '$profileName Tickets',
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Expanded(
+                  child: ListView.builder(
+                    itemCount: tickets.length,
+                    itemBuilder: (context, index) {
+                      final ticket = tickets[index];
+                      final doctorName =
+                          ticket['doctors']?['name']?.toString() ?? 'Doctor';
+                      final queueName = '$doctorName Queue';
+                      final bookingCode =
+                          ticket['booking_code']?.toString() ?? '--';
+                      final queueNumber = ticket['queue_number'] is int
+                          ? ticket['queue_number'] as int
+                          : int.tryParse(
+                                  ticket['queue_number']?.toString() ?? '') ??
+                              (index + 1);
+                      final status =
+                          ticket['status']?.toString().toUpperCase() ?? 'BOOKED';
+
+                      return TicketCard(
+                        bookingCode: bookingCode,
+                        patientName: profileName,
+                        doctorName: doctorName,
+                        queueName: queueName,
+                        appointmentTime: _formatTicketTime(ticket),
+                        queueNumber: queueNumber,
+                        status: status,
+                      );
+                    },
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: () => Navigator.pop(sheetContext),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF8171E5),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: const Text(
+                        'Done',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -631,23 +885,10 @@ class _HomePageState extends State<HomePage> {
 
               // Extract Availability Info
               final List availabilityList = doc['doctor_availability'] ?? [];
-              final List upcomingAvailabilities = availabilityList.where((slot) {
-                final dateStr = slot['duty_date']?.toString();
-                if (dateStr == null || dateStr.trim().isEmpty) return false;
-                try {
-                  final slotDate = DateTime.parse(dateStr.trim());
-                  final now = DateTime.now();
-                  final today = DateTime(now.year, now.month, now.day);
-                  final compareDate = DateTime(slotDate.year, slotDate.month, slotDate.day);
-                  return compareDate.isAfter(today) || compareDate.isAtSameMomentAs(today);
-                } catch (_) {
-                  return true;
-                }
-              }).toList();
               final Map<String, dynamic>? availability =
-                  upcomingAvailabilities.isNotEmpty ? upcomingAvailabilities.first : null;
+                  _primaryAvailabilityForDisplay(availabilityList);
 
-              final String dutyStatus = availability?['duty_status'] ?? 'Off Duty';
+              final String dutyStatus = _deriveDisplayDutyStatus(availability);
               final int delayMinutes = availability?['delay_minutes'] ?? 0;
 
               return _buildDoctorCard(
@@ -676,7 +917,8 @@ class _HomePageState extends State<HomePage> {
     required String dutyStatus,
     required int delayMinutes,
   }) {
-    final bool isOnDuty = dutyStatus.toLowerCase() == 'on duty';
+    final normalizedStatus = dutyStatus.toUpperCase();
+    final bool isAvailable = normalizedStatus == 'AVAILABLE';
 
     return Container(
       width: 140,
@@ -750,7 +992,7 @@ class _HomePageState extends State<HomePage> {
                     width: 12,
                     height: 12,
                     decoration: BoxDecoration(
-                      color: isOnDuty ? Colors.green : Colors.red,
+                      color: isAvailable ? Colors.green : Colors.orange,
                       shape: BoxShape.circle,
                       border: Border.all(color: Colors.white, width: 2),
                     ),
@@ -766,7 +1008,7 @@ class _HomePageState extends State<HomePage> {
                       borderRadius: BorderRadius.circular(8),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.06),
+                          color: Colors.black.withValues(alpha: 0.06),
                           blurRadius: 5,
                         ),
                       ],
@@ -829,7 +1071,7 @@ class _HomePageState extends State<HomePage> {
             decoration: BoxDecoration(
               color: delayMinutes > 0
                   ? Colors.orange.shade100
-                  : (isOnDuty ? Colors.green.shade50 : Colors.red.shade50),
+                  : (isAvailable ? Colors.green.shade50 : Colors.orange.shade50),
               borderRadius: BorderRadius.circular(6),
             ),
             child: Text(
@@ -839,7 +1081,7 @@ class _HomePageState extends State<HomePage> {
                 fontWeight: FontWeight.bold,
                 color: delayMinutes > 0
                     ? Colors.orange.shade800
-                    : (isOnDuty ? Colors.green.shade700 : Colors.red.shade700),
+                    : (isAvailable ? Colors.green.shade700 : Colors.orange.shade700),
               ),
             ),
           ),
@@ -905,9 +1147,10 @@ class _HomePageState extends State<HomePage> {
                         final String? img = doc['image_url'];
 
                         final List availList = doc['doctor_availability'] ?? [];
-                        final Map<String, dynamic>? avail = availList.isNotEmpty ? availList.first : null;
-                        final String status = avail?['duty_status'] ?? 'Off Duty';
-                        final bool isOnDuty = status.toLowerCase() == 'on duty';
+                        final Map<String, dynamic>? avail =
+                          _primaryAvailabilityForDisplay(availList);
+                        final String status = _deriveDisplayDutyStatus(avail);
+                        final bool isAvailable = status.toUpperCase() == 'AVAILABLE';
 
                         return Card(
                           margin: const EdgeInsets.only(bottom: 12),
@@ -927,7 +1170,9 @@ class _HomePageState extends State<HomePage> {
                             trailing: Container(
                               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                               decoration: BoxDecoration(
-                                color: isOnDuty ? Colors.green.shade100 : Colors.red.shade100,
+                                color: isAvailable
+                                    ? Colors.green.shade100
+                                    : Colors.orange.shade100,
                                 borderRadius: BorderRadius.circular(8),
                               ),
                               child: Text(
@@ -935,7 +1180,9 @@ class _HomePageState extends State<HomePage> {
                                 style: TextStyle(
                                   fontSize: 11,
                                   fontWeight: FontWeight.bold,
-                                  color: isOnDuty ? Colors.green.shade800 : Colors.red.shade800,
+                                  color: isAvailable
+                                      ? Colors.green.shade800
+                                      : Colors.orange.shade800,
                                 ),
                               ),
                             ),

@@ -164,7 +164,7 @@ class _AddPatientPageState extends State<AddPatientPage> {
               // RELATIONSHIP
               _buildLabel('Relationship'),
               DropdownButtonFormField<String>(
-                value: _selectedRelationship,
+                initialValue: _selectedRelationship,
                 decoration: _inputDecoration('', Icons.people_outline),
                 items: _relationships.map((rel) {
                   return DropdownMenuItem(value: rel, child: Text(rel));
@@ -179,7 +179,7 @@ class _AddPatientPageState extends State<AddPatientPage> {
               // GENDER
               _buildLabel('Gender'),
               DropdownButtonFormField<String>(
-                value: _selectedGender,
+                initialValue: _selectedGender,
                 decoration: _inputDecoration('', Icons.wc),
                 items: _genders.map((gen) {
                   return DropdownMenuItem(value: gen, child: Text(gen));

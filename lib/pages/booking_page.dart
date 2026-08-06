@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:mediqueue/pages/booking_ticket_page.dart';
 import 'package:mediqueue/services/supabase_service.dart';
 
 class BookingPage extends StatefulWidget {
@@ -39,6 +40,50 @@ class _BookingPageState extends State<BookingPage> {
     } catch (_) {
       return true;
     }
+  }
+
+  DateTime? _parseDutyDate(String? dateStr) {
+    if (dateStr == null || dateStr.trim().isEmpty) return null;
+    try {
+      final dt = DateTime.parse(dateStr.trim());
+      return DateTime(dt.year, dt.month, dt.day);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String _deriveAvailabilityStatus(Map<String, dynamic> slot) {
+    final stored = (slot['duty_status'] ?? '').toString().trim().toUpperCase();
+    if (stored == 'LATE') return 'LATE';
+
+    final slotDay = _parseDutyDate(slot['duty_date']?.toString());
+    if (slotDay == null) return stored.isNotEmpty ? stored : 'UPCOMING';
+
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+
+    if (slotDay.isBefore(today)) return 'COMPLETED';
+    if (slotDay.isAfter(today)) return 'UPCOMING';
+    return 'AVAILABLE';
+  }
+
+  String _formatAvailabilityLabel(Map<String, dynamic> slot) {
+    final date = slot['duty_date']?.toString() ?? '';
+    final start = (slot['start_time'] ?? '').toString();
+    final end = (slot['end_time'] ?? '').toString();
+    final status = _deriveAvailabilityStatus(slot);
+
+    final startLabel = start.length >= 5 ? start.substring(0, 5) : start;
+    final endLabel = end.length >= 5 ? end.substring(0, 5) : end;
+
+    final pieces = <String>[];
+    if (date.isNotEmpty) pieces.add(date);
+    if (startLabel.isNotEmpty || endLabel.isNotEmpty) {
+      pieces.add('$startLabel-$endLabel');
+    }
+    if (status.isNotEmpty) pieces.add(status);
+
+    return pieces.join(' · ');
   }
 
   Future<void> _loadDoctors() async {
@@ -153,7 +198,15 @@ class _BookingPageState extends State<BookingPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Booking created successfully!'), backgroundColor: Colors.green),
         );
-        Navigator.pop(context, created);
+        final goHome = await Navigator.of(context).push<bool>(
+          MaterialPageRoute(
+            builder: (_) => BookingTicketPage(booking: created),
+          ),
+        );
+
+        if (mounted && goHome == true) {
+          Navigator.of(context).pop(created);
+        }
         return;
       }
 
@@ -194,7 +247,8 @@ class _BookingPageState extends State<BookingPage> {
                   const Text('Doctor', style: TextStyle(fontWeight: FontWeight.bold)),
                   const SizedBox(height: 8),
                   DropdownButtonFormField<String>(
-                    value: _doctors.any((doc) => ((doc['id'] ?? doc['doctor_id'])?.toString() ?? '') == _selectedDoctorId)
+                    isExpanded: true,
+                    initialValue: _doctors.any((doc) => ((doc['id'] ?? doc['doctor_id'])?.toString() ?? '') == _selectedDoctorId)
                         ? _selectedDoctorId
                         : null,
                     items: _doctors.map((doc) {
@@ -202,7 +256,10 @@ class _BookingPageState extends State<BookingPage> {
                       final spec = doc['specialization'] ?? doc['specialties']?['name'] ?? '';
                       return DropdownMenuItem<String>(
                         value: docId,
-                        child: Text('${doc['name']} ${spec.isNotEmpty ? '($spec)' : ''}'),
+                        child: Text(
+                          '${doc['name']} ${spec.isNotEmpty ? '($spec)' : ''}',
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       );
                     }).toList(),
                     onChanged: (val) {
@@ -225,7 +282,8 @@ class _BookingPageState extends State<BookingPage> {
                   const Text('Availability Slot', style: TextStyle(fontWeight: FontWeight.bold)),
                   const SizedBox(height: 8),
                   DropdownButtonFormField<int>(
-                    value: _selectedAvailabilityId,
+                    isExpanded: true,
+                    initialValue: _selectedAvailabilityId,
                     items: (() {
                       // Find availability list for selected doctor
                       final doc = _doctors.firstWhere(
@@ -238,13 +296,12 @@ class _BookingPageState extends State<BookingPage> {
                         final availId = slot['availability_id'] is int
                             ? slot['availability_id'] as int
                             : int.tryParse(slot['availability_id']?.toString() ?? slot['id']?.toString() ?? '') ?? 0;
-                        final start = slot['start_time'] ?? '';
-                        final end = slot['end_time'] ?? '';
-                        final date = slot['duty_date'] ?? '';
-                        final status = slot['duty_status'] ?? '';
                         return DropdownMenuItem(
                           value: availId,
-                          child: Text('${date.isNotEmpty ? "$date · " : ""}$start-$end · $status'),
+                          child: Text(
+                            _formatAvailabilityLabel(Map<String, dynamic>.from(slot)),
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         );
                       }).toList();
                     })(),

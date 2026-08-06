@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:mediqueue/pages/receptionist_dashboard_page.dart';
-import 'package:mediqueue/pages/booking_appointment_page.dart'; // or your Home/Booking page
+
+// Services
+import 'package:mediqueue/services/supabase_service.dart';
+
+// Pages & Navigators
+import 'package:mediqueue/main.dart';
 import 'package:mediqueue/pages/login_page.dart';
+import 'package:mediqueue/pages/receptionist_navigation_wrapper.dart';
 
 class AuthWrapper extends StatefulWidget {
   const AuthWrapper({super.key});
@@ -12,53 +17,44 @@ class AuthWrapper extends StatefulWidget {
 }
 
 class _AuthWrapperState extends State<AuthWrapper> {
-  final SupabaseClient _supabase = Supabase.instance.client;
-
-  Future<String?> _getUserRole() async {
-    final user = _supabase.auth.currentUser;
-    if (user == null) return null;
-
-    try {
-      final response = await _supabase
-          .from('profiles')
-          .select('role')
-          .eq('id', user.id)
-          .maybeSingle();
-
-      return response?['role'] as String?;
-    } catch (e) {
-      debugPrint('Error fetching user role: $e');
-      return 'patient'; // Default fallback
-    }
-  }
+  final SupabaseService _supabaseService = SupabaseService();
 
   @override
   Widget build(BuildContext context) {
-    // Check authentication state
-    final session = _supabase.auth.currentSession;
-    if (session == null) {
-      return const LoginPage();
-    }
-
-    return FutureBuilder<String?>(
-      future: _getUserRole(),
+    return StreamBuilder<AuthState>(
+      stream: Supabase.instance.client.auth.onAuthStateChange,
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(
-            body: Center(
-              child: CircularProgressIndicator(color: Color(0xFF8171E5)),
-            ),
-          );
+        final session = Supabase.instance.client.auth.currentSession;
+
+        if (session == null) {
+          return const LoginPage();
         }
 
-        final role = snapshot.data ?? 'patient';
+        return FutureBuilder<String?>(
+          future: _supabaseService.fetchCurrentUserRole(),
+          builder: (context, roleSnapshot) {
+            if (roleSnapshot.connectionState == ConnectionState.waiting) {
+              return const Scaffold(
+                backgroundColor: Colors.white,
+                body: Center(
+                  child: CircularProgressIndicator(
+                    color: Color(0xFF8171E5),
+                  ),
+                ),
+              );
+            }
 
-        // Route based on user role
-        if (role == 'receptionist') {
-          return const ReceptionistDashboardLayout();
-        } else {
-          return const PatientSelectionBottomSheetContent(); // Or your patient dashboard
-        }
+            final role = roleSnapshot.data?.toLowerCase();
+
+            // Receptionist / Admin gets Receptionist Bottom Navigation Bar
+            if (role == 'receptionist' || role == 'admin') {
+              return const ReceptionistNavigationWrapper();
+            }
+
+            // Patients get Patient Bottom Navigation Bar
+            return const NavigationWrapper();
+          },
+        );
       },
     );
   }

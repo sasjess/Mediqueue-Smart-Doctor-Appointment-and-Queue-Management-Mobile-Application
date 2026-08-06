@@ -56,6 +56,34 @@ class _AppointmentManagementPageState extends State<AppointmentManagementPage> {
 
   Future<void> _cancelBooking(Map<String, dynamic> booking) async {
     if (_isUpdating) return;
+
+    final confirmCancel = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        final patientName = booking['patients']?['name']?.toString() ?? 'this patient';
+        return AlertDialog(
+          title: const Text('Cancel appointment?'),
+          content: Text('Are you sure you want to cancel the appointment for $patientName?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('No'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Yes, cancel'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmCancel != true) return;
+
     setState(() => _isUpdating = true);
 
     try {
@@ -172,7 +200,7 @@ class _AppointmentManagementPageState extends State<AppointmentManagementPage> {
       margin: const EdgeInsets.only(bottom: 14),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: const Color.fromARGB(255, 239, 236, 244),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: const Color(0xFFEEEEF5)),
       ),
@@ -190,7 +218,7 @@ class _AppointmentManagementPageState extends State<AppointmentManagementPage> {
                       style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                     ),
                     const SizedBox(height: 6),
-                    Text('Doctor: $doctorName', style: const TextStyle(color: Colors.grey)),
+                    Text('Doctor: $doctorName', style: const TextStyle(color: Color.fromARGB(255, 23, 23, 23))),
                   ],
                 ),
               ),
@@ -199,7 +227,7 @@ class _AppointmentManagementPageState extends State<AppointmentManagementPage> {
                 decoration: BoxDecoration(
                   color: status == 'CANCELLED'
                       ? const Color(0xFFFFE7E7)
-                      : const Color(0xFFEDEAFF),
+                      : const Color.fromARGB(255, 228, 223, 249),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(status, style: const TextStyle(fontWeight: FontWeight.bold)),
@@ -207,7 +235,7 @@ class _AppointmentManagementPageState extends State<AppointmentManagementPage> {
             ],
           ),
           const SizedBox(height: 12),
-          Text('Date: $bookingDate', style: const TextStyle(color: Colors.grey)),
+          Text('Date: $bookingDate', style: const TextStyle(color: Color.fromARGB(255, 23, 23, 23))),
           const SizedBox(height: 16),
           Wrap(
             spacing: 10,
@@ -218,7 +246,8 @@ class _AppointmentManagementPageState extends State<AppointmentManagementPage> {
                     ? null
                     : () => _cancelBooking(booking),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF8171E5),
+                  backgroundColor: const Color.fromARGB(255, 182, 37, 27),
+                  foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
                 child: const Text('Cancel Appointment'),
@@ -228,18 +257,23 @@ class _AppointmentManagementPageState extends State<AppointmentManagementPage> {
                     ? null
                     : () => _rescheduleBooking(booking),
                 style: OutlinedButton.styleFrom(
-                  foregroundColor: const Color(0xFF8171E5),
+                  backgroundColor: const Color.fromARGB(255, 192, 220, 237),
+                  foregroundColor: Colors.black,
                   side: const BorderSide(color: Color(0xFFDDD9F5)),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
-                child: const Text('Change date'),
+                child: const Text(
+                  'Change date',
+                  style: TextStyle(color: Colors.black),
+                ),
               ),
               ElevatedButton(
                 onPressed: isTerminal || _isUpdating
                     ? null
                     : () => _completeBooking(booking),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF2A7B3F),
+                  backgroundColor: const Color.fromARGB(255, 245, 239, 247),
+                  foregroundColor: Colors.black,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
                 child: const Text('Complete'),
@@ -260,14 +294,17 @@ class _AppointmentManagementPageState extends State<AppointmentManagementPage> {
         elevation: 0,
         title: const Text(
           'Appointment Management',
-          style: TextStyle(color: Color(0xFF1E1E28)),
+          style: TextStyle(
+            color: Color(0xFF1E1E28),
+            fontWeight: FontWeight.w700,
+            ),
         ),
       ),
       body: SafeArea(
         child: _isLoading
             ? const Center(child: CircularProgressIndicator(color: Color(0xFF8171E5)))
             : RefreshIndicator(
-                color: const Color(0xFF8171E5),
+                color: const Color.fromARGB(255, 7, 7, 7),
                 onRefresh: _loadBookings,
                 child: _bookings.isEmpty
                     ? ListView(

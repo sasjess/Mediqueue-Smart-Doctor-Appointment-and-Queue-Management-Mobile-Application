@@ -5,6 +5,7 @@ class TicketCard extends StatelessWidget {
   final String bookingCode; // e.g. "MQ-9482103"
   final String patientName;
   final String doctorName;
+  final String queueName;
   final String appointmentTime;
   final int queueNumber;
   final String status;
@@ -14,9 +15,10 @@ class TicketCard extends StatelessWidget {
     required this.bookingCode,
     required this.patientName,
     required this.doctorName,
+    required this.queueName,
     required this.appointmentTime,
     required this.queueNumber,
-    this.status = 'WAITING',
+    this.status = 'BOOKED',
   });
 
   @override
@@ -30,7 +32,7 @@ class TicketCard extends StatelessWidget {
         border: Border.all(color: const Color(0xFFEEEEF5)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: Colors.black.withValues(alpha: 0.04),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
@@ -70,7 +72,7 @@ class TicketCard extends StatelessWidget {
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Text(
-                  'Token #$queueNumber',
+                  '$queueName • Seat #$queueNumber',
                   style: const TextStyle(
                     color: Color(0xFF8171E5),
                     fontWeight: FontWeight.bold,
@@ -92,7 +94,6 @@ class TicketCard extends StatelessWidget {
               data: bookingCode, // Encodes the unique booking code string
               version: QrVersions.auto,
               size: 160.0,
-              foregroundColor: const Color(0xFF1E1E28),
             ),
           ),
           const SizedBox(height: 12),
