@@ -6,6 +6,46 @@ class SupabaseService {
   final SupabaseClient _client = Supabase.instance.client;
   static Future<List<Map<String, dynamic>>>? _specialtiesCache;
 
+  String _safeName({required User user, Map<String, dynamic>? profile}) {
+    final fromProfile = (profile?['full_name'] ?? '').toString().trim();
+    if (fromProfile.isNotEmpty) return fromProfile;
+
+    final fromMeta = (user.userMetadata?['full_name'] ?? '').toString().trim();
+    if (fromMeta.isNotEmpty) return fromMeta;
+
+    if ((user.email ?? '').trim().isNotEmpty) {
+      return user.email!.split('@').first;
+    }
+
+    return 'Self';
+  }
+
+  String _safePhone({required User user, Map<String, dynamic>? profile}) {
+    final fromProfile = (profile?['phone'] ?? '').toString().trim();
+    if (fromProfile.isNotEmpty) return fromProfile;
+
+    final fromAuth = (user.phone ?? '').toString().trim();
+    if (fromAuth.isNotEmpty) return fromAuth;
+
+    final fromMeta = (user.userMetadata?['phone'] ?? '').toString().trim();
+    if (fromMeta.isNotEmpty) return fromMeta;
+
+    return 'N/A';
+  }
+
+  String _safeGender(User user) {
+    final fromMeta = (user.userMetadata?['gender'] ?? '').toString().trim();
+    if (fromMeta.isNotEmpty) return fromMeta;
+    return 'Other';
+  }
+
+  String _safeDob(User user) {
+    final fromMeta = (user.userMetadata?['date_of_birth'] ?? '').toString().trim();
+    if (fromMeta.isNotEmpty) return fromMeta;
+    final now = DateTime.now();
+    return '${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+  }
+
   int _parseBookingId(dynamic value) {
     if (value is int) return value;
     if (value is num) return value.toInt();
@@ -348,32 +388,20 @@ class SupabaseService {
       // Fetch user full name/phone from profiles table or auth metadata
       String selfName = 'Self';
       String selfPhone = '';
+      String selfGender = 'Other';
+      String selfDob = _safeDob(user);
+      Map<String, dynamic>? profile;
       try {
-        final profile = await _client
+        profile = await _client
             .from('profiles')
             .select('full_name, phone')
             .eq('id', user.id)
             .maybeSingle();
-
-        if (profile != null &&
-            profile['full_name'] != null &&
-            profile['full_name'].toString().isNotEmpty) {
-          selfName = profile['full_name'].toString();
-        } else if (user.userMetadata?['full_name'] != null) {
-          selfName = user.userMetadata!['full_name'].toString();
-        } else if (user.email != null) {
-          selfName = user.email!.split('@').first;
-        }
-
-        if (profile != null && profile['phone'] != null) {
-          selfPhone = profile['phone'].toString().trim();
-        }
       } catch (_) {}
 
-      if (selfPhone.isEmpty) {
-        selfPhone =
-            (user.phone ?? user.userMetadata?['phone'] ?? '').toString().trim();
-      }
+      selfName = _safeName(user: user, profile: profile);
+      selfPhone = _safePhone(user: user, profile: profile);
+      selfGender = _safeGender(user);
 
       // Check if a "Self" patient record exists
       final normalizedSelfName = selfName.trim().toLowerCase();
@@ -391,12 +419,20 @@ class SupabaseService {
           final candidateId = candidate['patient_id'];
           final candidateName = (candidate['name'] ?? '').toString().trim();
           final candidateMobile = (candidate['patient_mobile'] ?? '').toString().trim();
+          final candidateGender = (candidate['gender'] ?? '').toString().trim();
+          final candidateDob = (candidate['date_of_birth'] ?? '').toString().trim();
           final updatePayload = <String, dynamic>{'relationship': 'Self'};
           if (candidateName.isEmpty && selfName.trim().isNotEmpty) {
             updatePayload['name'] = selfName;
           }
           if (candidateMobile.isEmpty && selfPhone.isNotEmpty) {
             updatePayload['patient_mobile'] = selfPhone;
+          }
+          if (candidateGender.isEmpty && selfGender.isNotEmpty) {
+            updatePayload['gender'] = selfGender;
+          }
+          if (candidateDob.isEmpty && selfDob.isNotEmpty) {
+            updatePayload['date_of_birth'] = selfDob;
           }
 
           if (candidateId != null) {
@@ -414,12 +450,20 @@ class SupabaseService {
           if (candidateMobile.isEmpty && selfPhone.isNotEmpty) {
             rawList[firstSelfLikeIndex]['patient_mobile'] = selfPhone;
           }
+          if (candidateGender.isEmpty && selfGender.isNotEmpty) {
+            rawList[firstSelfLikeIndex]['gender'] = selfGender;
+          }
+          if (candidateDob.isEmpty && selfDob.isNotEmpty) {
+            rawList[firstSelfLikeIndex]['date_of_birth'] = selfDob;
+          }
         } else {
           final newSelf = await _client.from('patients').insert({
             'user_id': user.id,
             'name': selfName,
             'relationship': 'Self',
             'patient_mobile': selfPhone,
+            'gender': selfGender,
+            'date_of_birth': selfDob,
           }).select().single();
           rawList.insert(0, Map<String, dynamic>.from(newSelf));
         }
@@ -434,6 +478,8 @@ class SupabaseService {
           final selfId = selfRow['patient_id'];
           final currentName = (selfRow['name'] ?? '').toString().trim();
           final currentMobile = (selfRow['patient_mobile'] ?? '').toString().trim();
+          final currentGender = (selfRow['gender'] ?? '').toString().trim();
+          final currentDob = (selfRow['date_of_birth'] ?? '').toString().trim();
           final patch = <String, dynamic>{};
 
           if (currentName.isEmpty && selfName.trim().isNotEmpty) {
@@ -443,6 +489,14 @@ class SupabaseService {
           if (currentMobile.isEmpty && selfPhone.isNotEmpty) {
             patch['patient_mobile'] = selfPhone;
             rawList[selfIndex]['patient_mobile'] = selfPhone;
+          }
+          if (currentGender.isEmpty && selfGender.isNotEmpty) {
+            patch['gender'] = selfGender;
+            rawList[selfIndex]['gender'] = selfGender;
+          }
+          if (currentDob.isEmpty && selfDob.isNotEmpty) {
+            patch['date_of_birth'] = selfDob;
+            rawList[selfIndex]['date_of_birth'] = selfDob;
           }
 
           if (patch.isNotEmpty && selfId != null) {

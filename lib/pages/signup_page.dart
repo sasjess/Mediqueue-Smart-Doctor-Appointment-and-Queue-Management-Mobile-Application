@@ -55,8 +55,10 @@ class _SignUpPageState extends State<SignUpPage> {
     setState(() => _isLoading = true);
 
     try {
+      final client = Supabase.instance.client;
+
       // 1. Create Supabase Auth Account with Metadata
-      final response = await Supabase.instance.client.auth.signUp(
+      final response = await client.auth.signUp(
         email: email,
         password: password,
         data: {
@@ -68,6 +70,78 @@ class _SignUpPageState extends State<SignUpPage> {
 
       if (mounted) {
         if (response.user != null) {
+          final userId = response.user!.id;
+
+          try {
+            final existingProfile = await client
+                .from('profiles')
+                .select('id')
+                .eq('id', userId)
+                .maybeSingle();
+
+            if (existingProfile == null) {
+              await client.from('profiles').insert({
+                'id': userId,
+                'full_name': name,
+                'phone': phone,
+                'role': _selectedRole,
+              });
+            } else {
+              await client.from('profiles').update({
+                'full_name': name,
+                'phone': phone,
+                'role': _selectedRole,
+              }).eq('id', userId);
+            }
+
+            final existingSelfPatient = await client
+                .from('patients')
+                .select('patient_id, gender, date_of_birth')
+                .eq('user_id', userId)
+                .eq('relationship', 'Self')
+                .maybeSingle();
+
+            final today = DateTime.now();
+            final fallbackDob =
+                '${today.year.toString().padLeft(4, '0')}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
+
+            if (existingSelfPatient == null) {
+              await client.from('patients').insert({
+                'user_id': userId,
+                'name': name,
+                'relationship': 'Self',
+                'patient_mobile': phone,
+                'gender': 'Other',
+                'date_of_birth': fallbackDob,
+              });
+            } else {
+              final existingGender =
+                  (existingSelfPatient['gender'] ?? '').toString().trim();
+              final existingDob =
+                  (existingSelfPatient['date_of_birth'] ?? '').toString().trim();
+
+              final updatePayload = <String, dynamic>{
+                'name': name,
+                'patient_mobile': phone,
+                'relationship': 'Self',
+              };
+
+              if (existingGender.isEmpty) {
+                updatePayload['gender'] = 'Other';
+              }
+              if (existingDob.isEmpty) {
+                updatePayload['date_of_birth'] = fallbackDob;
+              }
+
+              await client
+                  .from('patients')
+                  .update(updatePayload)
+                  .eq('patient_id', existingSelfPatient['patient_id']);
+            }
+          } catch (bootstrapError) {
+            debugPrint('Signup bootstrap warning: $bootstrapError');
+          }
+
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('Account created successfully!'),
