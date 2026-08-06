@@ -649,6 +649,54 @@ class SupabaseService {
     }
   }
 
+  Future<Map<String, dynamic>?> _findBookingById(dynamic bookingId) async {
+    try {
+      final response = await _client
+          .from('bookings')
+          .select('*')
+          .eq('booking_id', _parseBookingId(bookingId))
+          .maybeSingle();
+
+      if (response == null) {
+        return null;
+      }
+
+      return Map<String, dynamic>.from(response);
+    } catch (e) {
+      debugPrint('Error finding booking by id: $e');
+      return null;
+    }
+  }
+
+  Future<void> _completePreviousServingBooking({
+    required dynamic currentBookingId,
+    required String? doctorId,
+    required String? bookingDate,
+  }) async {
+    if (doctorId == null || doctorId.isEmpty) return;
+    if (bookingDate == null || bookingDate.isEmpty) return;
+
+    final previousServing = await _client
+        .from('bookings')
+        .select('booking_id')
+        .eq('doctor_id', doctorId)
+        .eq('booking_date', bookingDate)
+        .eq('status', 'SERVING')
+        .neq('booking_id', _parseBookingId(currentBookingId))
+        .order('created_at', ascending: false)
+        .limit(1)
+        .maybeSingle();
+
+    if (previousServing == null) {
+      return;
+    }
+
+    await _client
+        .from('bookings')
+        .update({'status': 'COMPLETED'})
+        .eq('booking_id', _parseBookingId(previousServing['booking_id']));
+  }
+
   Future<bool> markBookingArrivedByCode(String bookingCode) async {
     try {
       final booking = await findBookingByCode(bookingCode);
@@ -732,25 +780,11 @@ class SupabaseService {
       final doctorId = booking['doctor_id']?.toString();
       final bookingDate = booking['booking_date']?.toString();
 
-      if (doctorId != null && doctorId.isNotEmpty && bookingDate != null && bookingDate.isNotEmpty) {
-        final previousServing = await _client
-            .from('bookings')
-            .select('booking_id')
-            .eq('doctor_id', doctorId)
-            .eq('booking_date', bookingDate)
-            .eq('status', 'SERVING')
-            .neq('booking_id', bookingId)
-            .order('created_at', ascending: false)
-            .limit(1)
-            .maybeSingle();
-
-        if (previousServing != null) {
-          await _client
-              .from('bookings')
-              .update({'status': 'COMPLETED'})
-              .eq('booking_id', _parseBookingId(previousServing['booking_id']));
-        }
-      }
+      await _completePreviousServingBooking(
+        currentBookingId: bookingId,
+        doctorId: doctorId,
+        bookingDate: bookingDate,
+      );
 
       if (currentStatus != 'SERVING') {
         await _client
@@ -800,9 +834,22 @@ class SupabaseService {
     required String status,
   }) async {
     try {
+      final normalizedStatus = status.toUpperCase();
+
+      if (normalizedStatus == 'SERVING') {
+        final booking = await _findBookingById(bookingId);
+        if (booking == null) return false;
+
+        await _completePreviousServingBooking(
+          currentBookingId: bookingId,
+          doctorId: booking['doctor_id']?.toString(),
+          bookingDate: booking['booking_date']?.toString(),
+        );
+      }
+
       await _client
           .from('bookings')
-          .update({'status': status.toUpperCase()})
+          .update({'status': normalizedStatus})
           .eq('booking_id', _parseBookingId(bookingId));
       return true;
     } catch (e) {

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:mediqueue/pages/appointment_management_page.dart';
 import 'package:mediqueue/pages/doctor_management_page.dart';
 import 'package:mediqueue/pages/patient_profile_page.dart';
+import 'package:mediqueue/pages/receptionist_page.dart';
 
 class ReceptionistNavigationWrapper extends StatefulWidget {
   const ReceptionistNavigationWrapper({super.key});
@@ -16,7 +16,7 @@ class _ReceptionistNavigationWrapperState
   int _selectedIndex = 0;
 
   final List<Widget> _pages = const [
-    AppointmentManagementPage(),
+    ReceptionistPage(showProfileAction: false),
     DoctorManagementPage(),
     PatientProfilePage(),
   ];

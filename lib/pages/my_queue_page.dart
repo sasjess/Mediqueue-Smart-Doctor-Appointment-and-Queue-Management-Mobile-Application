@@ -49,18 +49,65 @@ class MyQueuePage extends StatelessWidget {
             );
           }
 
-          return ListView.builder(
-            padding: const EdgeInsets.only(top: 12, bottom: 24),
-            itemCount: bookings.length,
-            itemBuilder: (context, index) {
-              final booking = bookings[index];
+          final Map<String, List<Map<String, dynamic>>> queuesByDoctor = {};
+          for (final booking in bookings) {
+            final doctorName =
+                booking['doctors']?['name']?.toString() ?? 'Doctor';
+            queuesByDoctor.putIfAbsent(doctorName, () => []);
+            queuesByDoctor[doctorName]!.add(booking);
+          }
 
-              return _buildSimpleQueueTile(
-                tokenNumber: booking['queue_number'] ?? (index + 1),
-                patientName: booking['patients']?['name'] ?? 'Patient',
-                status: booking['status'] ?? 'BOOKED',
+          return ListView(
+            padding: const EdgeInsets.only(top: 12, bottom: 24),
+            children: queuesByDoctor.entries.expand((entry) {
+              final doctorName = entry.key;
+              final doctorQueue = entry.value;
+
+              final sectionHeader = Padding(
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Queue: $doctorName',
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF1E1E28),
+                        ),
+                      ),
+                    ),
+                    Text(
+                      '${doctorQueue.length} active',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
               );
-            },
+
+              final tiles = List<Widget>.generate(doctorQueue.length, (index) {
+                final booking = doctorQueue[index];
+                final rawQueueNumber = booking['queue_number'];
+                final tokenNumber = rawQueueNumber is int
+                    ? rawQueueNumber
+                    : int.tryParse(rawQueueNumber?.toString() ?? '') ??
+                        (index + 1);
+
+                return _buildSimpleQueueTile(
+                  tokenNumber: tokenNumber,
+                  patientName:
+                      booking['patients']?['name']?.toString() ?? 'Patient',
+                  doctorName: doctorName,
+                  status: booking['status']?.toString() ?? 'BOOKED',
+                );
+              });
+
+              return [sectionHeader, ...tiles];
+            }).toList(),
           );
         },
       ),
@@ -73,19 +120,29 @@ class MyQueuePage extends StatelessWidget {
   Widget _buildSimpleQueueTile({
     required int tokenNumber,
     required String patientName,
+    required String doctorName,
     required String status,
   }) {
     Color statusColor;
     IconData statusIcon;
 
     switch (status.toUpperCase()) {
+      case 'WAITING':
+      case 'BOOKED':
+        statusColor = Colors.orange;
+        statusIcon = Icons.access_time;
+        break;
       case 'ARRIVED':
         statusColor = Colors.green;
         statusIcon = Icons.check_circle_outline;
         break;
-      case 'IN_ROOM':
+      case 'SERVING':
         statusColor = Colors.blue;
         statusIcon = Icons.meeting_room;
+        break;
+      case 'COMPLETED':
+        statusColor = Colors.grey;
+        statusIcon = Icons.check_circle;
         break;
       default:
         statusColor = Colors.orange; // BOOKED / WAITING
@@ -119,13 +176,27 @@ class MyQueuePage extends StatelessWidget {
 
           // Patient Name
           Expanded(
-            child: Text(
-              patientName,
-              style: const TextStyle(
-                fontWeight: FontWeight.w600,
-                fontSize: 15,
-                color: Color(0xFF1E1E28),
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  patientName,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 15,
+                    color: Color(0xFF1E1E28),
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  'Queue: $doctorName',
+                  style: const TextStyle(
+                    color: Colors.grey,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
             ),
           ),
 
@@ -133,7 +204,7 @@ class MyQueuePage extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             decoration: BoxDecoration(
-              color: statusColor.withOpacity(0.12),
+              color: statusColor.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Row(

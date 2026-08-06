@@ -6,8 +6,8 @@ import 'package:mediqueue/services/supabase_config.dart';
 import 'package:mediqueue/widgets/role_guard.dart';
 
 // Pages
-import 'package:mediqueue/pages/auth_wrapper.dart';
 import 'package:mediqueue/pages/login_page.dart';
+import 'package:mediqueue/pages/onboarding_page.dart';
 import 'package:mediqueue/pages/home_page.dart';
 import 'package:mediqueue/pages/doctors_page.dart';
 import 'package:mediqueue/pages/patient_profile_page.dart';
@@ -16,6 +16,7 @@ import 'package:mediqueue/pages/booking_page.dart';
 import 'package:mediqueue/pages/book_appointment_page.dart';
 import 'package:mediqueue/pages/appointment_management_page.dart';
 import 'package:mediqueue/pages/doctor_management_page.dart';
+import 'package:mediqueue/pages/receptionist_navigation_wrapper.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -36,10 +37,11 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       scrollBehavior: const CustomScrollBehavior(),
-      home: const AuthWrapper(),
+      home: const OnboardingPage(),
       routes: {
         '/login': (context) => const LoginPage(),
         '/patient-home': (context) => const NavigationWrapper(),
+        '/receptionist-home': (context) => const ReceptionistNavigationWrapper(),
         '/appointments': (context) => const RoleGuard(
               child: AppointmentManagementPage(),
             ),
@@ -52,7 +54,11 @@ class MyApp extends StatelessWidget {
 }
 
 // ============================================================
-// NAVIGATION WRAPPER (Patient Main Tab View)
+// RECEPTIONIST NAVIGATION WRAPPER (Receptionist Tab View)
+// ============================================================
+
+// ============================================================
+// PATIENT NAVIGATION WRAPPER (Patient Tab View)
 // ============================================================
 
 class NavigationWrapper extends StatefulWidget {
@@ -65,19 +71,17 @@ class NavigationWrapper extends StatefulWidget {
 class _NavigationWrapperState extends State<NavigationWrapper> {
   int _selectedIndex = 0;
 
-  // Ordered tabs: Home (0) -> Doctors (1) -> Book (2) -> Queue (3) -> Profile (4)
   final List<Widget> _pages = const [
-    HomePage(), // Index 0
-    DoctorsPage(), // Index 1
-    PatientSelectionBottomSheetContent(), // Index 2
-    MyQueuePage(), // Index 3
-    PatientProfilePage(), // Index 4
+    HomePage(),
+    DoctorsPage(),
+    PatientSelectionBottomSheetContent(),
+    MyQueuePage(),
+    PatientProfilePage(),
   ];
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // IndexedStack keeps screen state active when switching tabs
       body: IndexedStack(
         index: _selectedIndex,
         children: _pages,
@@ -89,7 +93,6 @@ class _NavigationWrapperState extends State<NavigationWrapper> {
         type: BottomNavigationBarType.fixed,
         backgroundColor: Colors.white,
         onTap: (index) async {
-          // If user tapped the Book tab (index 2), show patient selection sheet
           if (index == 2) {
             final selectedPatient =
                 await showPatientSelectionBottomSheet(context);
@@ -148,7 +151,7 @@ class _NavigationWrapperState extends State<NavigationWrapper> {
 }
 
 // ============================================================
-// ERROR APP (Startup Safety UI)
+// ERROR APP
 // ============================================================
 
 class ErrorApp extends StatelessWidget {
@@ -203,7 +206,6 @@ class ErrorApp extends StatelessWidget {
   }
 }
 
-// Enable mouse drag gesture behavior across Desktop/Web browsers
 class CustomScrollBehavior extends MaterialScrollBehavior {
   const CustomScrollBehavior();
 

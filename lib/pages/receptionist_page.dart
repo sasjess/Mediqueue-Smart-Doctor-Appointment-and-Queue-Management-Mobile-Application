@@ -23,19 +23,34 @@ class _ReceptionistPageState extends State<ReceptionistPage> {
   bool _isLoadingBookings = true;
   bool _isUpdating = false;
   StreamSubscription<List<Map<String, dynamic>>>? _bookingsSubscription;
+  Timer? _refreshTimer;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(_appLifecycleObserver);
     _loadBookings();
     _bookingsSubscription = _supabaseService.streamActiveBookings().listen(
       (_) => _loadBookings(showLoader: false),
       onError: (_) => _loadBookings(showLoader: false),
     );
+    _refreshTimer = Timer.periodic(
+      const Duration(seconds: 12),
+      (_) => _loadBookings(showLoader: false),
+    );
   }
+
+  late final WidgetsBindingObserver _appLifecycleObserver =
+      _ReceptionLifecycleObserver(
+    onResume: () {
+      _loadBookings(showLoader: false);
+    },
+  );
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(_appLifecycleObserver);
+    _refreshTimer?.cancel();
     _searchController.dispose();
     _bookingsSubscription?.cancel();
     super.dispose();
@@ -54,6 +69,41 @@ class _ReceptionistPageState extends State<ReceptionistPage> {
     }).toList();
   }
 
+  int _queueNumberValue(Map<String, dynamic> booking) {
+    return int.tryParse(booking['queue_number']?.toString() ?? '') ?? 1 << 30;
+  }
+
+  List<Map<String, dynamic>> _sortedByQueueNumber(
+    List<Map<String, dynamic>> bookings,
+  ) {
+    final sorted = List<Map<String, dynamic>>.from(bookings);
+    sorted.sort((a, b) {
+      final queueCompare = _queueNumberValue(a).compareTo(_queueNumberValue(b));
+      if (queueCompare != 0) return queueCompare;
+
+      final createdA = DateTime.tryParse(a['created_at']?.toString() ?? '');
+      final createdB = DateTime.tryParse(b['created_at']?.toString() ?? '');
+      if (createdA == null || createdB == null) return 0;
+      return createdA.compareTo(createdB);
+    });
+    return sorted;
+  }
+
+  Map<String, dynamic>? _firstByStatus(String status) {
+    for (final booking in _activeBookings) {
+      final currentStatus = booking['status']?.toString().toUpperCase() ?? '';
+      if (currentStatus == status) return booking;
+    }
+    return null;
+  }
+
+  String _tokenLabelFromBooking(Map<String, dynamic>? booking) {
+    if (booking == null) return '--';
+    final raw = booking['queue_number']?.toString() ?? '';
+    if (raw.isEmpty) return '--';
+    return raw;
+  }
+
   Future<void> _loadBookings({bool showLoader = true}) async {
     if (showLoader && mounted) {
       setState(() => _isLoadingBookings = true);
@@ -63,7 +113,7 @@ class _ReceptionistPageState extends State<ReceptionistPage> {
       final bookings = await _supabaseService.fetchActiveBookings();
       if (!mounted) return;
       setState(() {
-        _activeBookings = bookings;
+        _activeBookings = _sortedByQueueNumber(bookings);
         _isLoadingBookings = false;
       });
     } catch (e) {
@@ -499,7 +549,8 @@ class _ReceptionistPageState extends State<ReceptionistPage> {
                     ? null
                     : () => _markArrived(booking),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF8171E5),
+                  backgroundColor: const Color.fromARGB(255, 192, 220, 237),
+                  foregroundColor: Colors.black,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
@@ -512,7 +563,8 @@ class _ReceptionistPageState extends State<ReceptionistPage> {
                     ? null
                     : () => _markServing(booking),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF2A7B3F),
+                  backgroundColor: const Color(0xFFF5EFF7),
+                  foregroundColor: Colors.black,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
@@ -579,16 +631,24 @@ class _ReceptionistPageState extends State<ReceptionistPage> {
                     style: TextStyle(fontSize: 13, color: Colors.grey),
                   ),
                   const SizedBox(height: 16),
-                  ElevatedButton.icon(
-                    onPressed: _isUpdating ? null : _openScanner,
-                    icon: const Icon(Icons.qr_code_scanner, size: 20),
-                    label: const Text('Scan patient QR'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF8171E5),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: _isUpdating ? null : _openScanner,
+                      icon: const Icon(Icons.qr_code_scanner, size: 20),
+                      label: const Text('Scan patient QR'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFF5EFF7),
+                        foregroundColor: Colors.black,
+                        side: const BorderSide(
+                          color: Color(0xFF8171E5),
+                          width: 1.5,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        padding: const EdgeInsets.symmetric(vertical: 16),
                       ),
-                      padding: const EdgeInsets.symmetric(vertical: 14),
                     ),
                   ),
                 ],
@@ -661,7 +721,8 @@ class _ReceptionistPageState extends State<ReceptionistPage> {
                               ? null
                               : () => _markArrived(_scannedBooking!),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF8171E5),
+                            backgroundColor: const Color.fromARGB(255, 192, 220, 237),
+                            foregroundColor: Colors.black,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(14),
                             ),
@@ -674,7 +735,8 @@ class _ReceptionistPageState extends State<ReceptionistPage> {
                               ? null
                               : () => _markServing(_scannedBooking!),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF2A7B3F),
+                            backgroundColor: const Color(0xFFF5EFF7),
+                            foregroundColor: Colors.black,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(14),
                             ),
@@ -687,7 +749,8 @@ class _ReceptionistPageState extends State<ReceptionistPage> {
                               ? null
                               : () => _markCompleted(_scannedBooking!),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF6B3AB7),
+                            backgroundColor: const Color(0xFFF5EFF7),
+                            foregroundColor: Colors.black,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(14),
                             ),
@@ -739,6 +802,88 @@ class _ReceptionistPageState extends State<ReceptionistPage> {
               ],
             ),
             const SizedBox(height: 10),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFFEEEEF5)),
+              ),
+              child: Builder(
+                builder: (_) {
+                  final servingBooking = _firstByStatus('SERVING');
+                  final waitingBooking = _firstByStatus('ARRIVED') ?? _firstByStatus('BOOKED') ?? _firstByStatus('WAITING');
+                  final totalActive = _activeBookings.length;
+
+                  return Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Now serving',
+                              style: TextStyle(fontSize: 12, color: Colors.grey),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Token ${_tokenLabelFromBooking(servingBooking)}',
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF27548C),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Next token',
+                              style: TextStyle(fontSize: 12, color: Colors.grey),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Token ${_tokenLabelFromBooking(waitingBooking)}',
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFFAA6F17),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Active count',
+                              style: TextStyle(fontSize: 12, color: Colors.grey),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              '$totalActive',
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF1E1E28),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: 10),
             if (_isLoadingBookings)
               const Center(
                 child: Padding(
@@ -764,71 +909,24 @@ class _ReceptionistPageState extends State<ReceptionistPage> {
               )
             else
               ...filteredBookings.map(_buildBookingTile),
-            const SizedBox(height: 24),
-            Container(
-              padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(22),
-                border: Border.all(color: const Color(0xFFEEEEF5)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Receptionist tools',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF1E1E28),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  const Text(
-                    'Use the appointment and doctor management panels for schedule updates, cancellations, and doctor availability.',
-                    style: TextStyle(fontSize: 13, color: Colors.grey),
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: ElevatedButton(
-                          onPressed: () => Navigator.pushNamed(context, '/appointments'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF8171E5),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                          ),
-                          child: const Text('Manage appointments'),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed: () => Navigator.pushNamed(context, '/doctors'),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: const Color(0xFF8171E5),
-                            side: const BorderSide(color: Color(0xFFDDD9F5)),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                          ),
-                          child: const Text('Doctor management'),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
             const SizedBox(height: 20),
           ],
         ),
       ),
     );
+  }
+}
+
+class _ReceptionLifecycleObserver with WidgetsBindingObserver {
+  final VoidCallback onResume;
+
+  _ReceptionLifecycleObserver({required this.onResume});
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      onResume();
+    }
   }
 }
 
