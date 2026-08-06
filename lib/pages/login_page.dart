@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:mediqueue/pages/onboarding_page.dart';
 import 'package:mediqueue/pages/signup_page.dart';
 import 'package:mediqueue/pages/auth_wrapper.dart';
 
@@ -140,7 +141,13 @@ class _LoginPageState extends State<LoginPage> {
                     child: SafeArea(
                       child: IconButton(
                         icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white),
-                        onPressed: () => Navigator.pop(context),
+                        onPressed: () {
+                          Navigator.of(context).pushReplacement(
+                            MaterialPageRoute(
+                              builder: (_) => const OnboardingPage(),
+                            ),
+                          );
+                        },
                       ),
                     ),
                   ),

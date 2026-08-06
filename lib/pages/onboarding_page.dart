@@ -92,7 +92,7 @@ class OnboardingPage extends StatelessWidget {
                             height: 54,
                             child: ElevatedButton(
                               onPressed: () {
-                                Navigator.pushReplacementNamed(context, '/reception');
+                                Navigator.pushReplacementNamed(context, '/login');
                               },
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: const Color(0xFF5B52E1),
