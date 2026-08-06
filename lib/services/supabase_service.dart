@@ -345,8 +345,9 @@ class SupabaseService {
       List<Map<String, dynamic>> rawList =
           List<Map<String, dynamic>>.from(existing);
 
-      // Fetch user full name from profiles table or auth metadata
+      // Fetch user full name/phone from profiles table or auth metadata
       String selfName = 'Self';
+      String selfPhone = '';
       try {
         final profile = await _client
             .from('profiles')
@@ -363,36 +364,95 @@ class SupabaseService {
         } else if (user.email != null) {
           selfName = user.email!.split('@').first;
         }
+
+        if (profile != null && profile['phone'] != null) {
+          selfPhone = profile['phone'].toString().trim();
+        }
       } catch (_) {}
 
+      if (selfPhone.isEmpty) {
+        selfPhone =
+            (user.phone ?? user.userMetadata?['phone'] ?? '').toString().trim();
+      }
+
       // Check if a "Self" patient record exists
-      bool hasSelf = rawList.any((p) =>
-          (p['relationship'] ?? '').toString().trim().toLowerCase() == 'self');
+      final normalizedSelfName = selfName.trim().toLowerCase();
+      final hasSelf = rawList.any(
+        (p) => (p['relationship'] ?? '').toString().trim().toLowerCase() == 'self',
+      );
 
-      if (!hasSelf && rawList.isEmpty) {
-        // Insert "Self" patient record into public.patients table if table is empty
-        final newSelf = await _client.from('patients').insert({
-          'user_id': user.id,
-          'name': selfName,
-          'relationship': 'Self',
-          'patient_mobile': user.phone ?? user.userMetadata?['phone'] ?? '',
-        }).select().single();
+      if (!hasSelf) {
+        final firstSelfLikeIndex = rawList.indexWhere((p) =>
+            (p['name'] ?? '').toString().trim().toLowerCase() == normalizedSelfName);
 
-        rawList.insert(0, Map<String, dynamic>.from(newSelf));
-      } else if (!hasSelf && rawList.isNotEmpty) {
-        final firstSelfIndex = rawList.indexWhere((p) =>
-            (p['name'] ?? '').toString().trim().toLowerCase() ==
-            selfName.trim().toLowerCase());
-        if (firstSelfIndex != -1) {
-          rawList[firstSelfIndex]['relationship'] = 'Self';
+        if (firstSelfLikeIndex != -1) {
+          // Persist the Self relationship so future fetches do not try to create again.
+          final candidate = rawList[firstSelfLikeIndex];
+          final candidateId = candidate['patient_id'];
+          final candidateName = (candidate['name'] ?? '').toString().trim();
+          final candidateMobile = (candidate['patient_mobile'] ?? '').toString().trim();
+          final updatePayload = <String, dynamic>{'relationship': 'Self'};
+          if (candidateName.isEmpty && selfName.trim().isNotEmpty) {
+            updatePayload['name'] = selfName;
+          }
+          if (candidateMobile.isEmpty && selfPhone.isNotEmpty) {
+            updatePayload['patient_mobile'] = selfPhone;
+          }
+
+          if (candidateId != null) {
+            try {
+              await _client
+                  .from('patients')
+                  .update(updatePayload)
+                  .eq('patient_id', candidateId);
+            } catch (_) {}
+          }
+          rawList[firstSelfLikeIndex]['relationship'] = 'Self';
+          if (candidateName.isEmpty && selfName.trim().isNotEmpty) {
+            rawList[firstSelfLikeIndex]['name'] = selfName;
+          }
+          if (candidateMobile.isEmpty && selfPhone.isNotEmpty) {
+            rawList[firstSelfLikeIndex]['patient_mobile'] = selfPhone;
+          }
         } else {
           final newSelf = await _client.from('patients').insert({
             'user_id': user.id,
             'name': selfName,
             'relationship': 'Self',
-            'patient_mobile': user.phone ?? user.userMetadata?['phone'] ?? '',
+            'patient_mobile': selfPhone,
           }).select().single();
           rawList.insert(0, Map<String, dynamic>.from(newSelf));
+        }
+      } else {
+        // Keep existing Self row complete when previously inserted with empty fields.
+        final selfIndex = rawList.indexWhere(
+          (p) =>
+              (p['relationship'] ?? '').toString().trim().toLowerCase() == 'self',
+        );
+        if (selfIndex != -1) {
+          final selfRow = rawList[selfIndex];
+          final selfId = selfRow['patient_id'];
+          final currentName = (selfRow['name'] ?? '').toString().trim();
+          final currentMobile = (selfRow['patient_mobile'] ?? '').toString().trim();
+          final patch = <String, dynamic>{};
+
+          if (currentName.isEmpty && selfName.trim().isNotEmpty) {
+            patch['name'] = selfName;
+            rawList[selfIndex]['name'] = selfName;
+          }
+          if (currentMobile.isEmpty && selfPhone.isNotEmpty) {
+            patch['patient_mobile'] = selfPhone;
+            rawList[selfIndex]['patient_mobile'] = selfPhone;
+          }
+
+          if (patch.isNotEmpty && selfId != null) {
+            try {
+              await _client
+                  .from('patients')
+                  .update(patch)
+                  .eq('patient_id', selfId);
+            } catch (_) {}
+          }
         }
       }
 
@@ -875,14 +935,29 @@ class SupabaseService {
     }
   }
 
-  /// Fetch active bookings with patient and doctor details for reception views.
-  Future<List<Map<String, dynamic>>> fetchActiveBookings() async {
+  /// Fetch active bookings with patient, doctor, and availability details.
+  Future<List<Map<String, dynamic>>> fetchActiveBookings({
+    bool todayOnly = false,
+  }) async {
     try {
-      final response = await _client
-          .from('bookings')
-          .select('*')
-          .not('status', 'in', '("COMPLETED","CANCELLED")')
-          .order('created_at', ascending: false);
+      final response = todayOnly
+          ? await (() {
+              final now = DateTime.now();
+              final today =
+                  '${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+
+              return _client
+                  .from('bookings')
+                  .select('*')
+                  .eq('booking_date', today)
+                  .not('status', 'in', '("COMPLETED","CANCELLED")')
+                  .order('created_at', ascending: false);
+            })()
+          : await _client
+              .from('bookings')
+              .select('*')
+              .not('status', 'in', '("COMPLETED","CANCELLED")')
+              .order('created_at', ascending: false);
 
       final bookings = List<Map<String, dynamic>>.from(response);
       if (bookings.isEmpty) {
@@ -896,6 +971,11 @@ class SupabaseService {
           .toList();
       final doctorIds = bookings
           .map((booking) => booking['doctor_id'])
+          .where((value) => value != null)
+          .toSet()
+          .toList();
+        final availabilityIds = bookings
+          .map((booking) => booking['availability_id'])
           .where((value) => value != null)
           .toSet()
           .toList();
@@ -930,6 +1010,21 @@ class SupabaseService {
         }
       }
 
+      final availabilityLookup = <String, Map<String, dynamic>>{};
+      if (availabilityIds.isNotEmpty) {
+        final availabilityResponse = await _client
+            .from('doctor_availability')
+            .select('availability_id,start_time,end_time,duty_date')
+            .filter('availability_id', 'in', availabilityIds);
+
+        for (final slot in availabilityResponse) {
+          final slotKey = slot['availability_id']?.toString();
+          if (slotKey != null) {
+            availabilityLookup[slotKey] = Map<String, dynamic>.from(slot);
+          }
+        }
+      }
+
       return bookings.map((booking) {
         final enriched = Map<String, dynamic>.from(booking);
         final patientKey = booking['patient_id']?.toString();
@@ -942,6 +1037,12 @@ class SupabaseService {
           enriched['doctors'] = doctorLookup[doctorKey];
         }
 
+        final availabilityKey = booking['availability_id']?.toString();
+        if (availabilityKey != null &&
+            availabilityLookup.containsKey(availabilityKey)) {
+          enriched['availability'] = availabilityLookup[availabilityKey];
+        }
+
         return enriched;
       }).toList();
     } catch (e) {
@@ -951,12 +1052,14 @@ class SupabaseService {
   }
 
   /// Live stream trigger for booking table changes (used to refresh enriched data).
-  Stream<List<Map<String, dynamic>>> streamActiveBookings() {
+  Stream<List<Map<String, dynamic>>> streamActiveBookings({
+    bool todayOnly = false,
+  }) {
     return _client
         .from('bookings')
         .stream(primaryKey: ['booking_id'])
         .order('created_at', ascending: false)
-        .asyncMap((_) => fetchActiveBookings());
+        .asyncMap((_) => fetchActiveBookings(todayOnly: todayOnly));
   }
 }
 
