@@ -132,16 +132,7 @@ class _HomePageState extends State<HomePage> {
 
   // Fetch doctors and their related specialties & availability
   Future<List<Map<String, dynamic>>> _fetchDoctors() async {
-    final response = await Supabase.instance.client.from('doctors').select('''
-          id, 
-          name, 
-          years_experience, 
-          rating, 
-          image_url, 
-          specialties(name),
-          doctor_availability(duty_date, duty_status, delay_minutes)
-        ''');
-    return List<Map<String, dynamic>>.from(response);
+    return _supabaseService.fetchDoctorsWithAvailability();
   }
 
   @override
@@ -457,8 +448,19 @@ class _HomePageState extends State<HomePage> {
 
   String _deriveDisplayDutyStatus(Map<String, dynamic>? slot) {
     if (slot == null) return 'UNAVAILABLE';
+
     final stored = slot['duty_status']?.toString().trim().toUpperCase();
-    return (stored == null || stored.isEmpty) ? 'UNAVAILABLE' : stored;
+    if (stored == 'LATE') return 'LATE';
+
+    final slotDay = _parseDutyDate(slot['duty_date']?.toString());
+    if (slotDay == null) return (stored == null || stored.isEmpty) ? 'UNAVAILABLE' : stored;
+
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+
+    if (slotDay.isBefore(today)) return 'COMPLETED';
+    if (slotDay.isAfter(today)) return 'UPCOMING';
+    return 'AVAILABLE';
   }
 
   Map<String, dynamic>? _primaryAvailabilityForDisplay(List<dynamic> slots) {

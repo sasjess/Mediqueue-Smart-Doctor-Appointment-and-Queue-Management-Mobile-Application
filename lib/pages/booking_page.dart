@@ -29,19 +29,7 @@ class _BookingPageState extends State<BookingPage> {
     _loadDoctors();
   }
 
-  bool _isTodayOrFutureDate(String? dateStr) {
-    if (dateStr == null || dateStr.trim().isEmpty) return false;
-    try {
-      final slotDate = DateTime.parse(dateStr.trim());
-      final now = DateTime.now();
-      final today = DateTime(now.year, now.month, now.day);
-      final compareDate = DateTime(slotDate.year, slotDate.month, slotDate.day);
-      return compareDate.isAfter(today) || compareDate.isAtSameMomentAs(today);
-    } catch (_) {
-      return true;
-    }
-  }
-
+  // Parse any date string format safely to normalized midnight local time
   DateTime? _parseDutyDate(String? dateStr) {
     if (dateStr == null || dateStr.trim().isEmpty) return null;
     try {
@@ -50,6 +38,16 @@ class _BookingPageState extends State<BookingPage> {
     } catch (_) {
       return null;
     }
+  }
+
+  // Robust check for today or future dates (removes time component)
+  bool _isTodayOrFutureDate(String? dateStr) {
+    final slotDate = _parseDutyDate(dateStr);
+    if (slotDate == null) return true;
+
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    return !slotDate.isBefore(today);
   }
 
   String _deriveAvailabilityStatus(Map<String, dynamic> slot) {
@@ -86,6 +84,39 @@ class _BookingPageState extends State<BookingPage> {
     return pieces.join(' · ');
   }
 
+  // Helper method to get sorted slots for a doctor
+  List<Map<String, dynamic>> _getSortedAvailabilityForDoctor(String? doctorId) {
+    if (doctorId == null || doctorId.isEmpty) return [];
+
+    final doc = _doctors.firstWhere(
+      (d) => ((d['id'] ?? d['doctor_id'])?.toString() ?? '') == doctorId,
+      orElse: () => {},
+    );
+
+    final List rawAvail = (doc['doctor_availability'] is List) ? doc['doctor_availability'] as List : [];
+    
+    // Convert to typed maps and filter past dates
+    final List<Map<String, dynamic>> validAvail = rawAvail
+        .where((slot) => _isTodayOrFutureDate(slot['duty_date']?.toString()))
+        .map((slot) => Map<String, dynamic>.from(slot as Map))
+        .toList();
+
+    // Sort by Date first, then Start Time ascending
+    validAvail.sort((a, b) {
+      final dateA = _parseDutyDate(a['duty_date']?.toString()) ?? DateTime(2099);
+      final dateB = _parseDutyDate(b['duty_date']?.toString()) ?? DateTime(2099);
+      
+      final dateCompare = dateA.compareTo(dateB);
+      if (dateCompare != 0) return dateCompare;
+
+      final timeA = (a['start_time'] ?? '').toString();
+      final timeB = (b['start_time'] ?? '').toString();
+      return timeA.compareTo(timeB);
+    });
+
+    return validAvail;
+  }
+
   Future<void> _loadDoctors() async {
     setState(() => _isLoading = true);
     try {
@@ -106,21 +137,14 @@ class _BookingPageState extends State<BookingPage> {
   }
 
   void _updateDefaultAvailabilitySlot() {
-    if (_selectedDoctorId != null) {
-      final doc = _doctors.firstWhere(
-        (d) => ((d['id'] ?? d['doctor_id'])?.toString() ?? '') == _selectedDoctorId,
-        orElse: () => {},
-      );
-      final List rawAvail = (doc['doctor_availability'] is List) ? doc['doctor_availability'] as List : [];
-      final List validAvail = rawAvail.where((slot) => _isTodayOrFutureDate(slot['duty_date']?.toString())).toList();
-      if (validAvail.isNotEmpty) {
-        final firstSlot = validAvail.first;
-        _selectedAvailabilityId = firstSlot['availability_id'] is int
-            ? firstSlot['availability_id'] as int
-            : int.tryParse(firstSlot['availability_id']?.toString() ?? firstSlot['id']?.toString() ?? '');
-      } else {
-        _selectedAvailabilityId = null;
-      }
+    final slots = _getSortedAvailabilityForDoctor(_selectedDoctorId);
+    if (slots.isNotEmpty) {
+      final firstSlot = slots.first;
+      _selectedAvailabilityId = firstSlot['availability_id'] is int
+          ? firstSlot['availability_id'] as int
+          : int.tryParse(firstSlot['availability_id']?.toString() ?? firstSlot['id']?.toString() ?? '');
+    } else {
+      _selectedAvailabilityId = null;
     }
   }
 
@@ -157,7 +181,6 @@ class _BookingPageState extends State<BookingPage> {
       final doctorId = _selectedDoctorId!;
       final availabilityId = _selectedAvailabilityId!;
 
-      // find selected availability map
       Map<String, dynamic>? availabilityMap;
       for (final d in _doctors) {
         final dId = (d['id'] ?? d['doctor_id'])?.toString() ?? '';
@@ -175,7 +198,6 @@ class _BookingPageState extends State<BookingPage> {
         if (availabilityMap != null) break;
       }
 
-      // prefer selected date, otherwise use availability duty_date if present
       String bookingDate;
       if (_selectedDate != null) {
         final d = _selectedDate!;
@@ -222,6 +244,8 @@ class _BookingPageState extends State<BookingPage> {
 
   @override
   Widget build(BuildContext context) {
+    final availableSlots = _getSortedAvailabilityForDoctor(_selectedDoctorId);
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Book Appointment', style: TextStyle(color: Color(0xFF1E1E28), fontWeight: FontWeight.bold)),
@@ -283,28 +307,24 @@ class _BookingPageState extends State<BookingPage> {
                   const SizedBox(height: 8),
                   DropdownButtonFormField<int>(
                     isExpanded: true,
-                    initialValue: _selectedAvailabilityId,
-                    items: (() {
-                      // Find availability list for selected doctor
-                      final doc = _doctors.firstWhere(
-                        (d) => ((d['id'] ?? d['doctor_id'])?.toString() ?? '') == (_selectedDoctorId ?? ''),
-                        orElse: () => {},
+                    value: availableSlots.any((s) {
+                      final aid = s['availability_id'] is int
+                          ? s['availability_id'] as int
+                          : int.tryParse(s['availability_id']?.toString() ?? s['id']?.toString() ?? '');
+                      return aid == _selectedAvailabilityId;
+                    }) ? _selectedAvailabilityId : null,
+                    items: availableSlots.map<DropdownMenuItem<int>>((slot) {
+                      final availId = slot['availability_id'] is int
+                          ? slot['availability_id'] as int
+                          : int.tryParse(slot['availability_id']?.toString() ?? slot['id']?.toString() ?? '') ?? 0;
+                      return DropdownMenuItem(
+                        value: availId,
+                        child: Text(
+                          _formatAvailabilityLabel(slot),
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       );
-                      final List rawAvail = (doc['doctor_availability'] is List) ? doc['doctor_availability'] as List : [];
-                      final List avail = rawAvail.where((slot) => _isTodayOrFutureDate(slot['duty_date']?.toString())).toList();
-                      return avail.map<DropdownMenuItem<int>>((slot) {
-                        final availId = slot['availability_id'] is int
-                            ? slot['availability_id'] as int
-                            : int.tryParse(slot['availability_id']?.toString() ?? slot['id']?.toString() ?? '') ?? 0;
-                        return DropdownMenuItem(
-                          value: availId,
-                          child: Text(
-                            _formatAvailabilityLabel(Map<String, dynamic>.from(slot)),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        );
-                      }).toList();
-                    })(),
+                    }).toList(),
                     onChanged: (val) {
                       setState(() {
                         _selectedAvailabilityId = val;

@@ -55,7 +55,17 @@ class _DoctorsPageState extends State<DoctorsPage> {
     if (slot == null) return 'UNAVAILABLE';
 
     final stored = slot['duty_status']?.toString().trim().toUpperCase();
-    return (stored == null || stored.isEmpty) ? 'UNAVAILABLE' : stored;
+    if (stored == 'LATE') return 'LATE';
+
+    final slotDay = _parseDutyDate(slot['duty_date']?.toString());
+    if (slotDay == null) return (stored == null || stored.isEmpty) ? 'UNAVAILABLE' : stored;
+
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+
+    if (slotDay.isBefore(today)) return 'COMPLETED';
+    if (slotDay.isAfter(today)) return 'UPCOMING';
+    return 'AVAILABLE';
   }
 
   Map<String, dynamic>? _primaryAvailabilityForDisplay(List availabilities) {
